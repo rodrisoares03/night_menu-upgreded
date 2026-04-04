@@ -2,13 +2,13 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local ContextActionService = game:GetService("ContextActionService")
-local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-local VirtualUser = game:GetService("VirtualUser")
-local Lighting = game:GetService("Lighting")
-local LogService = game:GetService("LogService")
+ContextActionService = game:GetService("ContextActionService")
+TweenService = game:GetService("TweenService")
+ReplicatedStorage = game:GetService("ReplicatedStorage")
+HttpService = game:GetService("HttpService")
+VirtualUser = game:GetService("VirtualUser")
+Lighting = game:GetService("Lighting")
+LogService = game:GetService("LogService")
 
 -- Limpar logs F9 a cada 5 segundos
 task.spawn(function()
@@ -21,7 +21,7 @@ task.spawn(function()
 end)
 
 -- Silenciar avisos de WaitForChild e erros de animação do jogo
-local oldWarn = warn
+oldWarn = warn
 warn = function(...)
 	local msg = tostring(...)
 	if not msg:find("Infinite yield") and not msg:find("Animation failed to load") and not msg:find("Failed to load animation") then
@@ -30,10 +30,10 @@ warn = function(...)
 end
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+Camera = workspace.CurrentCamera
 
 -- ========= SISTEMA CENTRAL DE ESP =========
-local ESPData = {}
+ESPData = {}
 
 -- Função para verificar se está na mesma dimensão/mapa
 function isInSameDimension(targetCharacter)
@@ -565,29 +565,88 @@ end
 
 -- ========= SISTEMA DE BIND DE CHARACTER =========
 function bindCharacter(player, character)
-	local humanoid = character:WaitForChild("Humanoid", 5)
-	local root = character:WaitForChild("HumanoidRootPart", 5)
-	if not humanoid or not root then return end
-
 	local data = ESPData[player]
 	if not data then return end
+	if not character or not character.Parent then return end
 
 	data.character = character
-	data.humanoid = humanoid
-	data.root = root
+	data.humanoid = character:FindFirstChildOfClass("Humanoid")
+	data.root = character:FindFirstChild("HumanoidRootPart") or getPrimaryPart(character)
 
-	if data.init and espEnabled then
+	if data.init and espEnabled and data.humanoid and data.root then
 		data.init(character)
 	end
+end
+
+local function syncPlayerCharacter(player)
+	if player == LocalPlayer then return nil end
+
+	local data = ESPData[player]
+	if not data then return nil end
+
+	local character = player.Character
+	if not character or not character.Parent then
+		if data.character then
+			cleanupESPForCharacter(data.character)
+		end
+		data.character = nil
+		data.humanoid = nil
+		data.root = nil
+		return nil
+	end
+
+	if data.character ~= character then
+		if data.character and data.character ~= character then
+			cleanupESPForCharacter(data.character)
+		end
+		bindCharacter(player, character)
+	end
+
+	data.character = character
+	data.humanoid = character:FindFirstChildOfClass("Humanoid")
+	data.root = character:FindFirstChild("HumanoidRootPart") or getPrimaryPart(character)
+
+	if not data.humanoid or not data.root then
+		task.spawn(function()
+			for _ = 1, 40 do
+				if ESPData[player] ~= data or player.Character ~= character or not character.Parent then
+					return
+				end
+
+				data.humanoid = character:FindFirstChildOfClass("Humanoid")
+				data.root = character:FindFirstChild("HumanoidRootPart") or getPrimaryPart(character)
+
+				if data.humanoid and data.root then
+					if data.init and espEnabled then
+						data.init(character)
+					end
+					return
+				end
+
+				task.wait(0.15)
+			end
+		end)
+	end
+
+	return data
 end
 
 function setupPlayer(player)
 	if player == LocalPlayer then return end
 
+	if ESPData[player] and ESPData[player].connections then
+		for _, conn in ipairs(ESPData[player].connections) do
+			if conn then
+				conn:Disconnect()
+			end
+		end
+	end
+
 	ESPData[player] = {
 		character = nil,
 		humanoid = nil,
 		root = nil,
+		connections = {},
 
 		init = function(character)
 			ensureHighlight(character)
@@ -620,7 +679,7 @@ function setupPlayer(player)
 		end,
 
 		cleanup = function()
-			local char = player.Character
+			local char = ESPData[player] and ESPData[player].character
 			if char then
 				pcall(function()
 					if highlights[char] then
@@ -652,23 +711,32 @@ function setupPlayer(player)
 		end
 	}
 
-	player.CharacterAdded:Connect(function(character)
-		bindCharacter(player, character)
-	end)
-
-	player.CharacterRemoving:Connect(function()
+	table.insert(ESPData[player].connections, player.CharacterAdded:Connect(function(character)
 		local data = ESPData[player]
 		if not data then return end
+		if data.character and data.character ~= character then
+			cleanupESPForCharacter(data.character)
+		end
+		bindCharacter(player, character)
+		task.defer(function()
+			syncPlayerCharacter(player)
+		end)
+	end))
+
+	table.insert(ESPData[player].connections, player.CharacterRemoving:Connect(function(character)
+		local data = ESPData[player]
+		if not data then return end
+		local oldCharacter = character or data.character
+		if oldCharacter then
+			cleanupESPForCharacter(oldCharacter)
+		end
 		data.character = nil
 		data.humanoid = nil
 		data.root = nil
-		if data.cleanup then
-			data.cleanup()
-		end
-	end)
+	end))
 
 	if player.Character then
-		bindCharacter(player, player.Character)
+		syncPlayerCharacter(player)
 	end
 end
 
@@ -1778,20 +1846,34 @@ end
 function refreshESPForPlayer(p)
 	if p == LocalPlayer then return end
 
-	local char = p.Character; if not char then return end
+	local data = syncPlayerCharacter(p)
+	local char = data and data.character
+	if not char then return end
+
+	local humanoid = data and data.humanoid or char:FindFirstChildOfClass("Humanoid")
+	local root = data and data.root or char:FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root then
+		cleanupESPForCharacter(char)
+		return
+	end
+
 	if espEnabled then
 		ensureHighlight(char)
 		ensureBox3D(char)
+		if showTracers then
+			ensureTracer(char)
+		end
+		if showEspDistance then
+			ensureDistanceLabel(char)
+		end
+		if showName then
+			ensureNameLabel(char, p)
+		end
 		if showHealth then
 			ensureHealthBar(char)
 		end
 	else
-		if highlights[char] then highlights[char].Enabled = false end
-		if boxes[char] then boxes[char]:Destroy(); boxes[char] = nil end
-		if healthBars[char] then
-			if healthBars[char].bg then healthBars[char].bg.Visible = false end
-			if healthBars[char].fill then healthBars[char].fill.Visible = false end
-		end
+		cleanupESPForCharacter(char)
 	end
 end
 
@@ -1916,6 +1998,9 @@ task.spawn(function()
 		end
 		
 		for _, player in ipairs(Players:GetPlayers()) do
+			if player and player ~= LocalPlayer then
+				syncPlayerCharacter(player)
+			end
 			if player and player ~= LocalPlayer and player.Character then
 				refreshESPForPlayer(player)
 			end
@@ -4655,51 +4740,98 @@ end)
 -- NOVO: Autofire
 autofireEnabled = false
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local autofireCooldown = 0.08
+local lastAutofireShot = 0
+
+local function canTriggerOnPlayer(player)
+	if not player or player == LocalPlayer or not isEnemy(player) then return false end
+	if not player.Character or not isInSameDimension(player.Character) then return false end
+
+	local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+	local root = player.Character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root then return false end
+
+	return true
+end
+
+local function fireAutofireShot()
+	local now = tick()
+	if now - lastAutofireShot < autofireCooldown then return end
+	lastAutofireShot = now
+
+	local character = LocalPlayer.Character
+	if character then
+		local tool = character:FindFirstChildOfClass("Tool")
+		if tool then
+			pcall(function() tool:Activate() end)
+		end
+	end
+
+	if mouse1click then
+		pcall(function() mouse1click() end)
+	end
+
+	pcall(function()
+		VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+		VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+	end)
+
+	if typeof(VirtualUser) == "Instance" then
+		pcall(function()
+			VirtualUser:Button1Down(Vector2.new(0, 0))
+			VirtualUser:Button1Up(Vector2.new(0, 0))
+		end)
+	end
+end
+
 autofireToggle = createToggle(combatContent, "Autofire (Triggerbot)", function(enabled)
 	autofireEnabled = enabled
 	if enabled then
+		lastAutofireShot = 0
 		_G.autofireLoop = RunService.RenderStepped:Connect(function()
-			-- SEGURANÇA: Não atirar se o menu estiver aberto
 			if panelVisible or not autofireEnabled then return end
-			
-			local origin = workspace.CurrentCamera.CFrame.Position
-			local dir = workspace.CurrentCamera.CFrame.LookVector * 1000
-			
-			local rayParams = RaycastParams.new()
-			rayParams.FilterDescendantsInstances = {LocalPlayer.Character, workspace.CurrentCamera}
-			rayParams.FilterType = Enum.RaycastFilterType.Exclude
-			rayParams.IgnoreWater = true
-			
-			local result = workspace:Raycast(origin, dir, rayParams)
-			if result and result.Instance then
-				-- Verificar se atingiu algum inimigo (incluindo hitbox expandida)
-				local char = result.Instance:FindFirstAncestorOfClass("Model")
-				local p = Players:GetPlayerFromCharacter(char)
-				
-				if p and p ~= LocalPlayer and isEnemy(p) then
-					local character = LocalPlayer.Character
-					if character then
-						local tool = character:FindFirstChildOfClass("Tool")
-						if tool then
-							tool:Activate()
-						end
-					end
-					
-					-- Métodos de clique simultâneos
-					if mouse1click then pcall(function() mouse1click() end) end
-					pcall(function()
-						VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-						task.wait(0.01)
-						VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-						
-						if typeof(VirtualUser) == "Instance" then
-							VirtualUser:Button1Down(Vector2.new(0,0))
-							task.wait(0.01)
-							VirtualUser:Button1Up(Vector2.new(0,0))
-						end
-					end)
+
+			local camera = workspace.CurrentCamera
+			if not camera then return end
+
+			local localCharacter = LocalPlayer.Character
+			local localHumanoid = localCharacter and localCharacter:FindFirstChildOfClass("Humanoid")
+			if not localCharacter or not localHumanoid or localHumanoid.Health <= 0 then return end
+
+			local targetPlayer = currentAimbotTarget
+			if not canTriggerOnPlayer(targetPlayer) then
+				local origin = camera.CFrame.Position
+				local dir = camera.CFrame.LookVector * 1000
+
+				local rayParams = RaycastParams.new()
+				rayParams.FilterDescendantsInstances = {localCharacter, camera}
+				rayParams.FilterType = Enum.RaycastFilterType.Exclude
+				rayParams.IgnoreWater = true
+
+				local result = workspace:Raycast(origin, dir, rayParams)
+				if result and result.Instance then
+					local char = result.Instance:FindFirstAncestorOfClass("Model")
+					targetPlayer = Players:GetPlayerFromCharacter(char)
 				end
 			end
+
+			if not canTriggerOnPlayer(targetPlayer) then return end
+
+			local origin = camera.CFrame.Position
+			local direction = targetPlayer.Character.HumanoidRootPart.Position - origin
+			local rayParams = RaycastParams.new()
+			rayParams.FilterDescendantsInstances = {localCharacter, camera}
+			rayParams.FilterType = Enum.RaycastFilterType.Exclude
+			rayParams.IgnoreWater = true
+
+			local result = workspace:Raycast(origin, direction, rayParams)
+			if not result or not result.Instance then return end
+
+			local hitCharacter = result.Instance:FindFirstAncestorOfClass("Model")
+			local hitPlayer = Players:GetPlayerFromCharacter(hitCharacter)
+			if hitPlayer ~= targetPlayer then return end
+
+			fireAutofireShot()
 		end)
 	else
 		if _G.autofireLoop then _G.autofireLoop:Disconnect() end
@@ -5723,8 +5855,9 @@ function getClosestPlayer()
 	local centerPos = aimbotMobile and UserInputService:GetMouseLocation() or Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
 	for player in pairs(ESPData) do
-		if isValidPlayer(player) and isEnemy(player) then
-			local character = ESPData[player].character
+		local data = syncPlayerCharacter(player)
+		if data and isValidPlayer(player) and isEnemy(player) then
+			local character = data.character
 			
 			-- Verificar se está na mesma dimensão
 			if not isInSameDimension(character) then
@@ -5859,14 +5992,14 @@ currentAimbotTarget = nil
 lastTargetUpdateTime = 0
 
 -- Sistema de salvamento
-local function saveConfig()
+function saveConfig()
 	if not writefile then return end
 	pcall(function()
 		writefile("sexo_config.json", HttpService:JSONEncode({aimbotEnabled=aimbotEnabled,espEnabled=espEnabled,showSkeleton=showSkeleton,showBox3D=showBox3D,showTracers=showTracers,showEspDistance=showEspDistance,showName=showName,showHealth=showHealth,aimbotBindString=aimbotBindString,aimbotFOV=aimbotFOV,aimbotSmooth=aimbotSmooth,aimbotTarget=aimbotTarget,speedBoostEnabled=speedBoostEnabled,speedBoostValue=speedBoostValue,jumpPowerBoostEnabled=jumpPowerBoostEnabled,jumpPowerBoostValue=jumpPowerBoostValue}))
 	end)
 end
 
-local function loadConfig()
+function loadConfig()
 	if not isfile or not readfile or not isfile("sexo_config.json") then return end
 	local s,d=pcall(function()return HttpService:JSONDecode(readfile("sexo_config.json"))end)
 	if s and d then aimbotEnabled=d.aimbotEnabled or false espEnabled=d.espEnabled or false showSkeleton=d.showSkeleton~=false showBox3D=d.showBox3D~=false showTracers=d.showTracers~=false showEspDistance=d.showEspDistance~=false showName=d.showName~=false showHealth=d.showHealth~=false aimbotBindString=d.aimbotBindString or"MouseRight"aimbotFOV=d.aimbotFOV or 100 aimbotSmooth=d.aimbotSmooth or 5 aimbotTarget=d.aimbotTarget or"Cabeça"speedBoostEnabled=d.speedBoostEnabled or false speedBoostValue=d.speedBoostValue or 50 jumpPowerBoostEnabled=d.jumpPowerBoostEnabled or false jumpPowerBoostValue=d.jumpPowerBoostValue or 100 end
@@ -5894,12 +6027,13 @@ RunService.RenderStepped:Connect(function()
 		local validChars = {}
 		
 		for _, player in ipairs(Players:GetPlayers()) do
+			local data = syncPlayerCharacter(player)
 			if player ~= LocalPlayer and isEnemy(player) then -- Só mostrar inimigos
-				local character = player.Character
+				local character = data and data.character or player.Character
 				
 				if character then
-					local humanoid = character:FindFirstChildOfClass("Humanoid")
-					local root = character:FindFirstChild("HumanoidRootPart")
+					local humanoid = data and data.humanoid or character:FindFirstChildOfClass("Humanoid")
+					local root = data and data.root or character:FindFirstChild("HumanoidRootPart")
 					
 					if humanoid and root and humanoid.Health > 0 then
 						validChars[character] = true
@@ -6032,6 +6166,13 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	
 	if ESPData[player] then
+		if ESPData[player].connections then
+			for _, conn in ipairs(ESPData[player].connections) do
+				if conn then
+					conn:Disconnect()
+				end
+			end
+		end
 		if ESPData[player].cleanup then
 			ESPData[player].cleanup()
 		end
@@ -6062,6 +6203,7 @@ local success, err = pcall(function()
 	-- Inicializar lista de players
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
+			syncPlayerCharacter(plr)
 			createPlayerButton(plr)
 			if plr.Character then
 				refreshESPForPlayer(plr)
