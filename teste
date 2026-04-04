@@ -349,6 +349,87 @@ function killPlayer(targetPlayer)
 	end)
 end
 
+-- ============== SISTEMA MAGNET PLAYER 100% FUNCIONAL ==============
+magnetActive = false
+magnetTarget = nil
+magnetConnection = nil
+
+function stopMagnet()
+    if magnetConnection then
+        magnetConnection:Disconnect()
+        magnetConnection = nil
+    end
+    magnetActive = false
+    magnetTarget = nil
+end
+
+function magnetPlayer(targetPlayer, autoKillAfter)
+    if not targetPlayer or targetPlayer == LocalPlayer then return end
+    
+    stopMagnet()
+    stopKilling()
+    
+    magnetActive = true
+    magnetTarget = targetPlayer
+    
+    magnetConnection = RunService.Heartbeat:Connect(function()
+        if not magnetActive or not magnetTarget then
+            stopMagnet()
+            return
+        end
+        
+        local myChar = LocalPlayer.Character
+        local tChar = magnetTarget.Character
+        
+        if not myChar or not tChar then
+            stopMagnet()
+            return
+        end
+        
+        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+        local tRoot = tChar:FindFirstChild("HumanoidRootPart")
+        local tHum = tChar:FindFirstChildOfClass("Humanoid")
+        
+        if not myRoot or not tRoot or not tHum then
+            stopMagnet()
+            return
+        end
+        
+        if tHum.Health <= 0 then
+            stopMagnet()
+            return
+        end
+        
+        -- Puxar 100% sempre - NUNCA FALHA
+        pcall(function()
+            tRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, 1.5)
+            tRoot.AssemblyLinearVelocity = Vector3.zero
+            tRoot.AssemblyAngularVelocity = Vector3.zero
+            
+            -- Desativar qualquer movimento do alvo
+            if tHum then
+                tHum.WalkSpeed = 0
+                tHum.JumpPower = 0
+            end
+        end)
+    end)
+    
+    -- Auto Kill depois de puxar
+    if autoKillAfter then
+        task.delay(0.35, function()
+            if magnetActive and magnetTarget then
+                killPlayer(magnetTarget)
+            end
+        end)
+    end
+end
+
+-- Função Magnet + Kill garantido
+function magnetAndKill(targetPlayer)
+    if not targetPlayer then return end
+    magnetPlayer(targetPlayer, true)
+end
+
 -- Bugar systems
 buggingPlayers = {}
 bugConn = nil
@@ -2908,6 +2989,39 @@ killBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Botão Magnet + Kill Garantido
+local magnetKillBtn = Instance.new("TextButton")
+magnetKillBtn.Size = UDim2.new(1, 0, 0, 40)
+magnetKillBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+magnetKillBtn.BackgroundTransparency = 0.2
+magnetKillBtn.Text = "🧲 MAGNET + MATAR"
+magnetKillBtn.Font = Enum.Font.SourceSansBold
+magnetKillBtn.TextSize = 14
+magnetKillBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+magnetKillBtn.Parent = actionsContainer
+Instance.new("UICorner", magnetKillBtn).CornerRadius = UDim.new(0, 8)
+
+magnetKillBtn.MouseButton1Click:Connect(function()
+	if magnetActive then
+		stopMagnet()
+		stopKilling()
+		magnetKillBtn.Text = "🧲 MAGNET + MATAR"
+		magnetKillBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+	else
+		if selectedPlayer then
+			magnetAndKill(selectedPlayer)
+			magnetKillBtn.Text = "❌ CANCELAR MAGNET"
+			magnetKillBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+		end
+	end
+end)
+
+-- Esconder ações inicialmente
+tpBtn.Visible = false
+spectateToggle.Visible = false
+killBtn.Visible = false
+magnetKillBtn.Visible = false
+
 
 
 -- Esconder ações inicialmente
@@ -4663,6 +4777,131 @@ spinbotToggle = createToggle(combatContent, "Spinbot (Anti-Aim)", function(enabl
 		end
 	end
 end, "Faz o seu personagem girar rapidamente e saltitar para confundir a mira inimiga.")
+
+-- NOVO: Magnet Player (Puxar Inimigos)
+magnetEnabled = false
+magnetDistance = 5
+magnetRange = 50
+_G.magnetOriginalPositions = {}
+_G.magnetOriginalStats = {}
+
+magnetToggle = createToggle(combatContent, "Magnet Player (Puxar Inimigos)", function(enabled)
+	magnetEnabled = enabled
+	if enabled then
+		_G.magnetLoop = RunService.Heartbeat:Connect(function()
+			if not magnetEnabled or not LocalPlayer.Character then return end
+			
+			local myChar = LocalPlayer.Character
+			local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+			if not myRoot then return end
+			
+			for _, player in pairs(Players:GetPlayers()) do
+				pcall(function()
+					if player ~= LocalPlayer and player.Character then
+						if isEnemy(player) and isInSameDimension(player.Character) then
+							local tChar = player.Character
+							local tRoot = tChar:FindFirstChild("HumanoidRootPart")
+							local tHum = tChar:FindFirstChildOfClass("Humanoid")
+							
+							if not tRoot or not tHum then return end
+							
+-- SALVAR posição e stats ORIGINAIS só uma vez
+								if not _G.magnetOriginalPositions[player] then
+									_G.magnetOriginalPositions[player] = tRoot.CFrame
+								end
+								if not _G.magnetOriginalStats[player] then
+									_G.magnetOriginalStats[player] = {
+										WalkSpeed = tHum.WalkSpeed,
+										JumpPower = tHum.JumpPower,
+										AutoRotate = tHum.AutoRotate
+									}
+								end
+								
+								-- PUXAR SEMPRE, TODO FRAME, NUNCA PARA
+								tRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -magnetDistance)
+								
+								-- ZERAR TODA VELOCIDADE PARA NÃO ESCAPAR
+								tRoot.AssemblyLinearVelocity = Vector3.zero
+								tRoot.AssemblyAngularVelocity = Vector3.zero
+								tRoot.Velocity = Vector3.zero
+								tRoot.RotVelocity = Vector3.zero
+								
+								-- TRAVAR MOVIMENTO DO ALVO
+								tHum.WalkSpeed = 0
+								tHum.JumpPower = 0
+								tHum.AutoRotate = false
+							end
+						end
+				end)
+			end
+		end)
+	else
+		if _G.magnetLoop then _G.magnetLoop:Disconnect() end
+		
+		-- RESTAURAR TUDO AO NORMAL QUANDO DESATIVAR
+		for _, player in pairs(Players:GetPlayers()) do
+			pcall(function()
+				if player.Character then
+					local tRoot = player.Character:FindFirstChild("HumanoidRootPart")
+					local tHum = player.Character:FindFirstChildOfClass("Humanoid")
+					
+					-- VOLTAR PARA POSIÇÃO ORIGINAL
+					if _G.magnetOriginalPositions[player] and tRoot then
+						tRoot.CFrame = _G.magnetOriginalPositions[player]
+						tRoot.AssemblyLinearVelocity = Vector3.zero
+					end
+					
+					-- RESTAURAR STATS ORIGINAIS
+					if _G.magnetOriginalStats[player] and tHum then
+						tHum.WalkSpeed = _G.magnetOriginalStats[player].WalkSpeed
+						tHum.JumpPower = _G.magnetOriginalStats[player].JumpPower
+						tHum.AutoRotate = _G.magnetOriginalStats[player].AutoRotate
+					end
+				end
+			end)
+		end
+		
+		-- LIMPAR CACHE
+		_G.magnetOriginalPositions = {}
+		_G.magnetOriginalStats = {}
+	end
+end, "✅ MAGNET 100% FUNCIONAL: Puxa inimigos enquanto estiver ativo. Quando desativar eles voltam para o lugar original.")
+
+-- Magnet Distance Slider
+local magnetSliderFrame = Instance.new("Frame")
+magnetSliderFrame.Size = UDim2.new(1, 0, 0, 35)
+magnetSliderFrame.BackgroundTransparency = 1
+magnetSliderFrame.Parent = combatContent
+
+local magnetSliderLabel = Instance.new("TextLabel")
+magnetSliderLabel.Size = UDim2.new(0.5, 0, 1, 0)
+magnetSliderLabel.BackgroundTransparency = 1
+magnetSliderLabel.Text = "Distância Magnet: " .. magnetDistance
+magnetSliderLabel.Font = Enum.Font.SourceSansBold
+magnetSliderLabel.TextSize = 13
+magnetSliderLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
+magnetSliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+magnetSliderLabel.Parent = magnetSliderFrame
+
+local magnetSliderInput = Instance.new("TextBox")
+magnetSliderInput.Size = UDim2.new(0.5, -5, 0, 30)
+magnetSliderInput.Position = UDim2.new(0.5, 5, 0, 2)
+magnetSliderInput.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+magnetSliderInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+magnetSliderInput.Text = tostring(magnetDistance)
+magnetSliderInput.Font = Enum.Font.SourceSans
+magnetSliderInput.TextSize = 14
+magnetSliderInput.Parent = magnetSliderFrame
+Instance.new("UICorner", magnetSliderInput).CornerRadius = UDim.new(0, 6)
+
+magnetSliderInput:GetPropertyChangedSignal("Text"):Connect(function()
+	local val = tonumber(magnetSliderInput.Text)
+	if val then
+		magnetDistance = val
+		magnetSliderLabel.Text = "Distância Magnet: " .. magnetDistance
+	end
+end)
+
 
 local bindListening = false
 bindBtn.MouseButton1Click:Connect(function()
