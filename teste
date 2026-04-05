@@ -7110,5 +7110,3 @@ LocalPlayer.Idled:Connect(function()
 	VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 	warn("[NIGHT MENU] Anti-AFK ativado para prevenir kick.")
 end)
-
-
