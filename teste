@@ -2324,6 +2324,32 @@ local title = New("TextLabel", {
 	Size = UDim2.new(0.72, 0, 1, 0),
 	TextXAlignment = Enum.TextXAlignment.Left,
 }, header)
+local minimizedHint = New("TextLabel", {
+	Text = "Menu minimizado  |  clique em + para abrir",
+	TextSize = 11,
+	Font = Enum.Font.GothamMedium,
+	TextColor3 = Color3.fromRGB(200, 200, 220),
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 18, 0, 21),
+	Size = UDim2.new(1, -110, 0, 14),
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Visible = false,
+}, header)
+
+local menuExpandedSize = UDim2.new(0, 960, 0, 600)
+local menuExpandedPosition = UDim2.new(0.5, -480, 0.5, -300)
+local menuMinimizedSize = UDim2.new(0, 220, 0, 40)
+local menuMinimizedPosition = UDim2.new(0.5, -110, 0.5, -20)
+local menuIsMinimized = false
+
+local function findTopButton(offset)
+	for _, child in ipairs(header:GetChildren()) do
+		if child:IsA("TextButton") and child.Position.X.Offset == offset then
+			return child
+		end
+	end
+	return nil
+end
 
 local function TopBtn(symbol, xOff, hoverColor, action)
 	local btn = New("TextButton", {
@@ -2356,7 +2382,33 @@ end)
 TopBtn("×", -36, Color3.fromRGB(230, 70, 70), function() showPanel(false) end)
 
 -- Sidebar (185px) – abas alinhadas, tema escuro
-local sidebar = New("Frame", {
+local minimizeBtn = findTopButton(-72)
+local function setMinimizedState(shouldMinimize)
+	menuIsMinimized = shouldMinimize
+	sidebar.Visible = not shouldMinimize
+	content.Visible = not shouldMinimize
+	minimizedHint.Visible = false
+	title.TextYAlignment = Enum.TextYAlignment.Center
+	title.Size = shouldMinimize and UDim2.new(1, -110, 1, 0) or UDim2.new(0.72, 0, 1, 0)
+
+	if minimizeBtn then
+		minimizeBtn.Text = shouldMinimize and "+" or "─"
+	end
+
+	if shouldMinimize then
+		UI_Tween(mainFrame, {Size = menuMinimizedSize, Position = menuMinimizedPosition}, 0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	else
+		UI_Tween(mainFrame, {Size = menuExpandedSize, Position = menuExpandedPosition}, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	end
+end
+
+if minimizeBtn then
+	minimizeBtn.MouseButton1Click:Connect(function()
+		setMinimizedState(not menuIsMinimized)
+	end)
+end
+
+sidebar = New("Frame", {
 	Name = "Sidebar",
 	BackgroundColor3 = C.BgSidebar,
 	BorderSizePixel = 0,
@@ -2471,7 +2523,7 @@ joinBtn.MouseLeave:Connect(function()
 end)
 
 -- Content (área central) – fundo com detalhe
-local content = New("Frame", {
+content = New("Frame", {
 	Name = "Content",
 	BackgroundColor3 = C.BgSection,
 	BackgroundTransparency = 0,
