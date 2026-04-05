@@ -9,6 +9,9 @@ HttpService = game:GetService("HttpService")
 VirtualUser = game:GetService("VirtualUser")
 Lighting = game:GetService("Lighting")
 LogService = game:GetService("LogService")
+MarketplaceService = game:GetService("MarketplaceService")
+LocalizationService = game:GetService("LocalizationService")
+Stats = game:GetService("Stats")
 
 -- Limpar logs F9 a cada 5 segundos
 task.spawn(function()
@@ -2914,6 +2917,7 @@ local playersPage = createPage("PLAYERS")
 local espPage = createPage("ESP")
 local aimbotPage = createPage("AIMBOT")
 local utilPage = createPage("UTIL")
+local infoPage = createPage("INFO")
 for _, child in ipairs(utilPage:GetChildren()) do
 	if child:IsA("UIListLayout") or child:IsA("UIPadding") then
 		child:Destroy()
@@ -2924,7 +2928,7 @@ utilPage.CanvasSize = UDim2.new(0, 0, 0, 0)
 utilPage.ScrollBarThickness = 6
 utilPage.ScrollingDirection = Enum.ScrollingDirection.Y
 
-local utilRoot = Instance.new("Frame")
+utilRoot = Instance.new("Frame")
 utilRoot.Name = "UtilRoot"
 utilRoot.BackgroundTransparency = 1
 utilRoot.Position = UDim2.new(0, 24, 0, 20)
@@ -2932,7 +2936,7 @@ utilRoot.Size = UDim2.new(1, -48, 0, 0)
 utilRoot.AutomaticSize = Enum.AutomaticSize.Y
 utilRoot.Parent = utilPage
 
-local utilRootLayout = Instance.new("UIListLayout")
+utilRootLayout = Instance.new("UIListLayout")
 utilRootLayout.SortOrder = Enum.SortOrder.LayoutOrder
 utilRootLayout.Padding = UDim.new(0, 12)
 utilRootLayout.Parent = utilRoot
@@ -2941,11 +2945,206 @@ function refreshUtilCanvas()
 	utilPage.CanvasSize = UDim2.new(0, 0, 0, utilRootLayout.AbsoluteContentSize.Y + 40)
 end
 
+infoPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+infoPage.ScrollBarThickness = 6
+infoPage.ScrollingDirection = Enum.ScrollingDirection.Y
+
+infoRoot = Instance.new("Frame")
+infoRoot.Name = "InfoRoot"
+infoRoot.BackgroundTransparency = 1
+infoRoot.Position = UDim2.new(0, 24, 0, 20)
+infoRoot.Size = UDim2.new(1, -48, 0, 0)
+infoRoot.AutomaticSize = Enum.AutomaticSize.Y
+infoRoot.Parent = infoPage
+
+infoRootLayout = Instance.new("UIListLayout")
+infoRootLayout.SortOrder = Enum.SortOrder.LayoutOrder
+infoRootLayout.Padding = UDim.new(0, 14)
+infoRootLayout.Parent = infoRoot
+
+function mapCountryName(code)
+	countryNames = {
+		US = "United States",
+		DE = "Germany",
+		NL = "Netherlands",
+		PT = "Portugal",
+		BR = "Brazil",
+		GB = "United Kingdom",
+		FR = "France",
+		ES = "Spain",
+		IT = "Italy",
+		PL = "Poland",
+		SE = "Sweden",
+		NO = "Norway",
+		FI = "Finland",
+		DK = "Denmark",
+		CA = "Canada",
+		MX = "Mexico",
+		AR = "Argentina",
+		JP = "Japan",
+		KR = "South Korea",
+		IN = "India",
+		AU = "Australia",
+	}
+	return countryNames[code] or code or "Unknown"
+end
+
+function getServerRegionText()
+	return "Unknown"
+end
+
+function getPingText()
+	pingText = "--"
+	pcall(function()
+		local network = Stats.Network
+		local serverStats = network and network.ServerStatsItem
+		local pingItem = serverStats and serverStats["Data Ping"]
+		if pingItem and pingItem.GetValueString then
+			pingText = pingItem:GetValueString()
+		end
+	end)
+	return pingText
+end
+
+function getServerTypeText()
+	if game.PrivateServerId and game.PrivateServerId ~= "" then
+		if game.PrivateServerOwnerId and game.PrivateServerOwnerId ~= 0 then
+			return "Private Server"
+		end
+		return "Reserved Server"
+	end
+	return "Public Server"
+end
+
+function getGameNameText()
+	gameName = "Unknown Game"
+	pcall(function()
+		info = MarketplaceService:GetProductInfo(game.PlaceId)
+		if info and info.Name then
+			gameName = info.Name
+		end
+	end)
+	return gameName
+end
+
+infoProfileCard = New("Frame", {
+	BackgroundColor3 = C.BgCard,
+	BorderSizePixel = 0,
+	Size = UDim2.new(1, 0, 0, 96),
+}, infoRoot)
+Corner(12, infoProfileCard)
+Stroke(C.Divider, 1, infoProfileCard).Transparency = 0.2
+
+infoAvatar = New("ImageLabel", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 18, 0, 14),
+	Size = UDim2.new(0, 68, 0, 68),
+	Image = Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420),
+}, infoProfileCard)
+Corner(34, infoAvatar)
+
+infoProfileName = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 102, 0, 18),
+	Size = UDim2.new(1, -118, 0, 24),
+	Font = Enum.Font.GothamBold,
+	TextSize = 18,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = LocalPlayer.DisplayName and LocalPlayer.DisplayName ~= "" and LocalPlayer.DisplayName or LocalPlayer.Name,
+}, infoProfileCard)
+
+infoProfileUser = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 102, 0, 46),
+	Size = UDim2.new(1, -118, 0, 18),
+	Font = Enum.Font.Gotham,
+	TextSize = 13,
+	TextColor3 = C.TxtDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "@" .. LocalPlayer.Name,
+}, infoProfileCard)
+
+infoGameCard = New("Frame", {
+	BackgroundColor3 = C.BgCard,
+	BorderSizePixel = 0,
+	Size = UDim2.new(1, 0, 0, 196),
+}, infoRoot)
+Corner(12, infoGameCard)
+Stroke(C.Divider, 1, infoGameCard).Transparency = 0.2
+
+infoGameTitle = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 18, 0, 14),
+	Size = UDim2.new(1, -36, 0, 22),
+	Font = Enum.Font.GothamBold,
+	TextSize = 18,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Current Game",
+}, infoGameCard)
+
+infoGameName = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 18, 0, 44),
+	Size = UDim2.new(1, -36, 0, 22),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 15,
+	TextColor3 = C.PurpleGlow,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = getGameNameText(),
+}, infoGameCard)
+
+function createInfoRow(parent, y, labelText)
+	rowLabel = New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 18, 0, y),
+		Size = UDim2.new(0.42, 0, 0, 18),
+		Font = Enum.Font.Gotham,
+		TextSize = 13,
+		TextColor3 = C.TxtDim,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = labelText,
+	}, parent)
+	rowValue = New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0.42, 0, 0, y),
+		Size = UDim2.new(0.58, -18, 0, 18),
+		Font = Enum.Font.GothamSemibold,
+		TextSize = 13,
+		TextColor3 = C.TxtWhite,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "--",
+	}, parent)
+	return rowValue
+end
+
+infoPlayerCountValue = createInfoRow(infoGameCard, 78, "Players")
+infoServerTypeValue = createInfoRow(infoGameCard, 104, "Server Type")
+infoServerRegionValue = createInfoRow(infoGameCard, 130, "Server Region")
+infoPingValue = createInfoRow(infoGameCard, 156, "Ping")
+
+function refreshInfoPage()
+	infoProfileName.Text = LocalPlayer.DisplayName and LocalPlayer.DisplayName ~= "" and LocalPlayer.DisplayName or LocalPlayer.Name
+	infoProfileUser.Text = "@" .. LocalPlayer.Name
+	infoGameName.Text = getGameNameText()
+	infoPlayerCountValue.Text = tostring(#Players:GetPlayers())
+	infoServerTypeValue.Text = getServerTypeText()
+	infoServerRegionValue.Text = getServerRegionText()
+	infoPingValue.Text = getPingText()
+end
+
+Players.PlayerAdded:Connect(refreshInfoPage)
+Players.PlayerRemoving:Connect(refreshInfoPage)
+refreshInfoPage()
+
 
 createTab("PLAYERS", "Players", "", 1)
 createTab("ESP", "ESP", "", 2)
 createTab("AIMBOT", "RAGE", "", 3)
 createTab("UTIL", "Misc", "", 4)
+createTab("INFO", "Info", "", 5)
 
 setTab("PLAYERS")
 
