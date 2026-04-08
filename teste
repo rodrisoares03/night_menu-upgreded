@@ -12,6 +12,8 @@ LogService = game:GetService("LogService")
 MarketplaceService = game:GetService("MarketplaceService")
 LocalizationService = game:GetService("LocalizationService")
 Stats = game:GetService("Stats")
+ProximityPromptService = game:GetService("ProximityPromptService")
+VirtualInputManager = game:GetService("VirtualInputManager")
 
 -- Limpar logs F9 a cada 5 segundos
 task.spawn(function()
@@ -109,6 +111,8 @@ thirdPersonBind = nil
 thirdPersonBindString = "None"
 kickPushBind = nil
 kickPushBindString = "None"
+waypointBind = nil
+waypointBindString = "None"
 
 -- Dropdown alvo
 targetDropdownOpen = false
@@ -164,6 +168,139 @@ local function bindDisplayName(bindValue, fallbackName)
 	end
 
 	return fallbackName or tostring(bindValue)
+end
+
+function clearWaypointMarker()
+	if waypointMarker then
+		pcall(function()
+			waypointMarker:Destroy()
+		end)
+		waypointMarker = nil
+	end
+end
+
+function createWaypointMarker(position)
+	clearWaypointMarker()
+	if not position then return end
+
+	local marker = Instance.new("Part")
+	marker.Name = "NightWaypointMarker"
+	marker.Anchored = true
+	marker.CanCollide = false
+	marker.CanTouch = false
+	marker.CanQuery = false
+	marker.Material = Enum.Material.Neon
+	marker.Color = Color3.fromRGB(0, 170, 255)
+	marker.Size = Vector3.new(1.2, 0.35, 1.2)
+	marker.CFrame = CFrame.new(position + Vector3.new(0, 0.2, 0))
+	marker.Parent = workspace
+
+	local selection = Instance.new("SelectionBox")
+	selection.Adornee = marker
+	selection.LineThickness = 0.05
+	selection.Color3 = Color3.fromRGB(120, 220, 255)
+	selection.SurfaceTransparency = 1
+	selection.Parent = marker
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "WaypointBillboard"
+	billboard.Size = UDim2.new(0, 90, 0, 90)
+	billboard.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = marker
+
+	local arrow = Instance.new("TextLabel")
+	arrow.BackgroundTransparency = 1
+	arrow.Size = UDim2.new(1, 0, 1, 0)
+	arrow.Font = Enum.Font.GothamBlack
+	arrow.Text = "v"
+	arrow.TextScaled = true
+	arrow.TextColor3 = Color3.fromRGB(0, 170, 255)
+	arrow.TextStrokeTransparency = 0
+	arrow.TextStrokeColor3 = Color3.fromRGB(230, 245, 255)
+	arrow.Parent = billboard
+
+	waypointMarker = marker
+end
+
+function saveCurrentWaypoint()
+	local character = LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return false end
+
+	local rayParams = RaycastParams.new()
+	rayParams.FilterDescendantsInstances = {character}
+	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+	local rayResult = workspace:Raycast(root.Position, Vector3.new(0, -300, 0), rayParams)
+	if rayResult then
+		waypointPosition = rayResult.Position
+	else
+		waypointPosition = root.Position - Vector3.new(0, 3, 0)
+	end
+
+	createWaypointMarker(waypointPosition)
+	return true
+end
+
+function teleportToWaypoint()
+	if not waypointPosition then return false end
+
+	local character = LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return false end
+
+	root.CFrame = CFrame.new(waypointPosition + Vector3.new(0, 4, 0))
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	return true
+end
+
+function clearWaypoint()
+	waypointPosition = nil
+	clearWaypointMarker()
+end
+
+function triggerPromptInteraction(prompt)
+	if not prompt or not prompt.Parent or not prompt.Enabled then return false end
+
+	local handled = false
+	if fireproximityprompt then
+		handled = pcall(function()
+			fireproximityprompt(prompt)
+		end)
+	end
+
+	if handled then
+		return true
+	end
+
+	local holdDuration = math.max(prompt.HoldDuration or 0, 0.05)
+	local keyCode = prompt.KeyboardKeyCode
+	if keyCode and keyCode ~= Enum.KeyCode.Unknown then
+		pcall(function()
+			VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+			task.wait(holdDuration)
+			VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+		end)
+		return true
+	end
+
+	return false
+end
+
+function tryInstantInteractPrompt(prompt)
+	if not instantInteractEnabled or instantInteractBusy then return end
+	if not prompt or not prompt.Parent or not prompt.Enabled then return end
+
+	instantInteractBusy = true
+	task.spawn(function()
+		pcall(function()
+			triggerPromptInteraction(prompt)
+		end)
+		task.wait(math.max((prompt and prompt.HoldDuration or 0) + 0.1, 0.15))
+		instantInteractBusy = false
+	end)
 end
 
 function makeConfigKey(labelText)
@@ -250,6 +387,11 @@ kickPushMissingRemoteWarned = false
 -- Valores originais
 originalWalkSpeed = 16
 originalJumpPower = 50
+waypointPosition = nil
+waypointMarker = nil
+instantInteractEnabled = false
+instantInteractConnection = nil
+instantInteractBusy = false
 
 highlights = {}         -- [Character] = Highlight
 overlays = {}           -- [Character] = BillboardGui
@@ -3806,7 +3948,7 @@ configCategory = createCategory(configPage, "Config")
 configInfoCard = New("Frame", {
 	BackgroundColor3 = C.BgCard,
 	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 0, 620),
+	Size = UDim2.new(1, 0, 0, 674),
 }, configCategory)
 Corner(12, configInfoCard)
 Stroke(C.Divider, 1, configInfoCard).Transparency = 0.2
@@ -3921,7 +4063,7 @@ configCodeBox = New("TextBox", {
 	BackgroundColor3 = C.BgInput,
 	BorderSizePixel = 0,
 	Position = UDim2.new(0, 0, 0, 430),
-	Size = UDim2.new(1, 0, 0, 158),
+	Size = UDim2.new(1, 0, 0, 154),
 	Font = Enum.Font.Code,
 	TextSize = 12,
 	TextColor3 = C.TxtWhite,
@@ -7081,6 +7223,34 @@ antiKickToggle = createToggle(utilsContent, "Anti-Kick", function(enabled)
 	end
 end, "Intercepts local kick attempts sent by the server or other scripts.")
 
+instantInteractToggle = createToggle(utilsContent, "Instant Interact", function(enabled)
+	instantInteractEnabled = enabled
+	if enabled then
+		if instantInteractConnection then
+			instantInteractConnection:Disconnect()
+		end
+		instantInteractConnection = ProximityPromptService.PromptShown:Connect(function(prompt)
+			tryInstantInteractPrompt(prompt)
+		end)
+		task.spawn(function()
+			for _, descendant in ipairs(workspace:GetDescendants()) do
+				if not instantInteractEnabled then
+					break
+				end
+				if descendant:IsA("ProximityPrompt") then
+					tryInstantInteractPrompt(descendant)
+					task.wait(0.05)
+				end
+			end
+		end)
+	else
+		if instantInteractConnection then
+			instantInteractConnection:Disconnect()
+			instantInteractConnection = nil
+		end
+	end
+end, "Detects visible ProximityPrompt interactions and automatically handles hold or click prompts.")
+
 kickPushToggle = createToggle(utilsContent, "Kick Push Player", function(enabled)
 	toggleKickPush(enabled)
 end, "Empurra automaticamente o player no cursor ou mais perto da mira.", {
@@ -7121,6 +7291,96 @@ toggleBindActions["kickPush"] = function()
 end
 
 -- TP para Cursor com Bind
+waypointSaveBtn = Instance.new("TextButton")
+waypointSaveBtn.Size = UDim2.new(1, 0, 0, 45)
+waypointSaveBtn.BackgroundColor3 = C.BindBg
+waypointSaveBtn.BackgroundTransparency = 0
+waypointSaveBtn.Text = "Save Waypoint"
+waypointSaveBtn.Font = Enum.Font.Gotham
+waypointSaveBtn.TextSize = 13
+waypointSaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+waypointSaveBtn.BorderSizePixel = 0
+waypointSaveBtn.Parent = utilsContent
+Instance.new("UICorner", waypointSaveBtn).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, waypointSaveBtn).Transparency = 0.25
+
+waypointSaveBtn.MouseButton1Click:Connect(function()
+	if saveCurrentWaypoint() then
+		waypointSaveBtn.Text = "Save Waypoint: OK"
+	else
+		waypointSaveBtn.Text = "Save Waypoint: Failed"
+	end
+	task.delay(1.25, function()
+		if waypointSaveBtn and waypointSaveBtn.Parent then
+			waypointSaveBtn.Text = "Save Waypoint"
+		end
+	end)
+end)
+
+waypointClearBtn = Instance.new("TextButton")
+waypointClearBtn.Size = UDim2.new(1, 0, 0, 45)
+waypointClearBtn.BackgroundColor3 = C.BindBg
+waypointClearBtn.BackgroundTransparency = 0
+waypointClearBtn.Text = "Clear Waypoint"
+waypointClearBtn.Font = Enum.Font.Gotham
+waypointClearBtn.TextSize = 13
+waypointClearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+waypointClearBtn.BorderSizePixel = 0
+waypointClearBtn.Parent = utilsContent
+Instance.new("UICorner", waypointClearBtn).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, waypointClearBtn).Transparency = 0.25
+
+waypointClearBtn.MouseButton1Click:Connect(function()
+	clearWaypoint()
+end)
+
+waypointBindBtn = Instance.new("TextButton")
+waypointBindBtn.Size = UDim2.new(1, 0, 0, 45)
+waypointBindBtn.BackgroundColor3 = C.BindBg
+waypointBindBtn.BackgroundTransparency = 0
+waypointBindBtn.Text = "Waypoint TP Bind: " .. waypointBindString
+waypointBindBtn.Font = Enum.Font.SourceSans
+waypointBindBtn.TextSize = 14
+waypointBindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+waypointBindBtn.Parent = utilsContent
+Instance.new("UICorner", waypointBindBtn).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, waypointBindBtn).Transparency = 0.25
+
+function setWaypointBind(bindValue, bindName)
+	waypointBind = bindValue
+	waypointBindString = bindName
+	waypointBindBtn.Text = "Waypoint TP Bind: " .. bindDisplayName(bindValue, bindName)
+	waypointBindBtn.BackgroundColor3 = C.BindBg
+	waypointBindListening = false
+end
+
+registerConfigBind("waypoint_tp", {
+	getBindValue = function() return waypointBind end,
+	getBindName = function() return waypointBindString end,
+	setBind = function(bindValue, bindName)
+		setWaypointBind(bindValue, bindName or bindDisplayName(bindValue, bindName))
+	end,
+	label = "Waypoint TP Bind",
+})
+
+waypointBindListening = false
+waypointBindBtn.MouseButton1Click:Connect(function()
+	waypointBindListening = true
+	waypointBindBtn.Text = "Press a key or mouse button..."
+	waypointBindBtn.BackgroundColor3 = C.BindActive
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if waypointBindListening then
+		local bindValue, bindName = getBindableInput(input)
+		if not bindValue then
+			return
+		end
+		setWaypointBind(bindValue, bindName)
+		return
+	end
+end)
+
 tpToCursorBind = nil
 tpToCursorBindString = "None"
 tpCursorCooldown = 0
@@ -8025,6 +8285,84 @@ function deleteConfig(configName)
 	return true
 end
 
+function unloadNightMenu()
+	pcall(function()
+		aimbotEnabled = false
+		espEnabled = false
+		showSkeleton = false
+		showBox3D = false
+		showTracers = false
+		showEspDistance = false
+		showName = false
+		showHealth = false
+		speedBoostEnabled = false
+		jumpPowerBoostEnabled = false
+		infiniteJumpEnabled = false
+		antiKickEnabled = false
+		autoKillEnabled = false
+		autofireEnabled = false
+		magnetEnabled = false
+		instantInteractEnabled = false
+		freeflyOn = false
+		kickPushEnabled = false
+		toggleKickPush(false)
+	end)
+
+	pcall(function()
+		if _G.spinLoop then _G.spinLoop:Disconnect() _G.spinLoop = nil end
+		if _G.magnetLoop then _G.magnetLoop:Disconnect() _G.magnetLoop = nil end
+		if _G.hitboxLoop then _G.hitboxLoop:Disconnect() _G.hitboxLoop = nil end
+		if _G.hitboxPlayerRemovingConn then _G.hitboxPlayerRemovingConn:Disconnect() _G.hitboxPlayerRemovingConn = nil end
+		if _G.antiRagdollConn then _G.antiRagdollConn:Disconnect() _G.antiRagdollConn = nil end
+		if instantInteractConnection then instantInteractConnection:Disconnect() instantInteractConnection = nil end
+	end)
+
+	pcall(function()
+		for _, player in pairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer and player.Character then
+				restoreCharacterHitbox(player.Character)
+			end
+		end
+		_G.hitboxOriginalSizes = {}
+		for _, indicator in pairs(_G.hitboxIndicators or {}) do
+			pcall(function() indicator:Destroy() end)
+		end
+		_G.hitboxIndicators = {}
+	end)
+
+	pcall(function()
+		if FlySystem and FlySystem.flying then
+			FlySystem:toggleFly()
+		end
+		if FlySystem and FlySystem.noclip then
+			FlySystem:toggleNoclip()
+		end
+	end)
+
+	pcall(function()
+		local character = LocalPlayer.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = originalWalkSpeed or 16
+				humanoid.JumpPower = originalJumpPower or 50
+				humanoid.AutoRotate = true
+			end
+		end
+		LocalPlayer.CameraMaxZoomDistance = 400
+		LocalPlayer.CameraMinZoomDistance = 0.5
+	end)
+
+	pcall(clearAllESPVisuals)
+	pcall(clearWaypoint)
+	panelVisible = false
+	menuIsMinimized = false
+
+	if gui and gui.Parent then
+		gui:Destroy()
+	end
+end
+
 function exportConfig(configName)
 	local cleanName = sanitizeConfigName(configName or (configNameInput and configNameInput.Text) or selectedConfigName)
 	if not cleanName then
@@ -8894,6 +9232,10 @@ createConfigActionButton(configInfoCard, "Import", 0.69, 212, 0.31, function()
 	importConfig()
 end)
 
+createConfigActionButton(configInfoCard, "Unload", 0, 598, 1, function()
+	unloadNightMenu()
+end)
+
 function applyStoredMenuSettings()
 	local libraryData = readConfigLibrary()
 	if type(libraryData) ~= "table" then
@@ -8970,6 +9312,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	elseif input.KeyCode == UNLOCK_MOUSE_KEY then
 		unlockMouse()
+	elseif waypointBind and inputMatchesBind(input, waypointBind) then
+		teleportToWaypoint()
 	elseif tpToCursorBind and inputMatchesBind(input, tpToCursorBind) then
 		-- TP para onde o cursor estÃ¡ apontando com cooldown e verificaÃ§Ã£o de fÃ­sica
 		local currentTime = tick()
