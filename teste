@@ -261,29 +261,137 @@ function clearWaypoint()
 	clearWaypointMarker()
 end
 
+function getPromptDistance(prompt)
+	local character = LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local promptParent = prompt and prompt.Parent
+	local promptPart = promptParent and (promptParent:IsA("BasePart") and promptParent or promptParent:FindFirstAncestorWhichIsA("BasePart"))
+	if not root or not promptPart then
+		return math.huge
+	end
+
+	return (promptPart.Position - root.Position).Magnitude
+end
+
+function getPromptPriority(prompt)
+	local actionText = string.lower(tostring(prompt and prompt.ActionText or ""))
+	local objectText = string.lower(tostring(prompt and prompt.ObjectText or ""))
+	local combined = actionText .. " " .. objectText
+
+	if combined:find("roubar") or combined:find("steal") or combined:find("colet") or combined:find("collect") or combined:find("pegar") or combined:find("take") or combined:find("loot") then
+		return 3
+	end
+
+	if combined:find("abrir") or combined:find("open") or combined:find("claim") or combined:find("pickup") then
+		return 2
+	end
+
+	if combined:find("shop") or combined:find("loja") or combined:find("buy") or combined:find("compr") or combined:find("sell") or combined:find("vender") then
+		return 0
+	end
+
+	return 1
+end
+
+function splitPromptFilterList(rawText)
+	local tokens = {}
+	local lowered = string.lower(tostring(rawText or ""))
+	for token in lowered:gmatch("[^,%s]+") do
+		table.insert(tokens, token)
+	end
+	return tokens
+end
+
+function promptMatchesFilter(prompt, rawText)
+	local tokens = splitPromptFilterList(rawText)
+	if #tokens == 0 then
+		return false
+	end
+
+	local actionText = string.lower(tostring(prompt and prompt.ActionText or ""))
+	local objectText = string.lower(tostring(prompt and prompt.ObjectText or ""))
+	local combined = actionText .. " " .. objectText
+
+	for _, token in ipairs(tokens) do
+		if token ~= "" and combined:find(token, 1, true) then
+			return true
+		end
+	end
+
+	return false
+end
+
+function isPromptInteractable(prompt)
+	if not prompt or not prompt.Parent or not prompt.Enabled then return false end
+	if getPromptDistance(prompt) > ((prompt.MaxActivationDistance or 10) + 1.5) then return false end
+	if instantInteractBlacklistText ~= "" and promptMatchesFilter(prompt, instantInteractBlacklistText) then return false end
+	if instantInteractWhitelistText ~= "" and not promptMatchesFilter(prompt, instantInteractWhitelistText) then return false end
+	return true
+end
+
+function getBestInstantInteractPrompt()
+	local bestPrompt = nil
+	local bestPriority = -1
+	local bestDistance = math.huge
+
+	for prompt in pairs(instantInteractVisiblePrompts) do
+		if isPromptInteractable(prompt) then
+			local priority = getPromptPriority(prompt)
+			local distance = getPromptDistance(prompt)
+			if priority > bestPriority or (priority == bestPriority and distance < bestDistance) then
+				bestPrompt = prompt
+				bestPriority = priority
+				bestDistance = distance
+			end
+		else
+			instantInteractVisiblePrompts[prompt] = nil
+		end
+	end
+
+	return bestPrompt
+end
+
 function triggerPromptInteraction(prompt)
 	if not prompt or not prompt.Parent or not prompt.Enabled then return false end
 
-	local handled = false
-	if fireproximityprompt then
-		handled = pcall(function()
-			fireproximityprompt(prompt)
-		end)
-	end
-
-	if handled then
-		return true
-	end
-
 	local holdDuration = math.max(prompt.HoldDuration or 0, 0.05)
+	local releaseDelay = holdDuration + 0.35
+	if prompt.InputHoldBegin and prompt.InputHoldEnd then
+		local ok = pcall(function()
+			prompt:InputHoldBegin()
+			task.wait(releaseDelay)
+			if prompt.Parent and prompt.Enabled then
+				task.wait(0.2)
+			end
+			prompt:InputHoldEnd()
+		end)
+		if ok then
+			return true
+		end
+	end
+
 	local keyCode = prompt.KeyboardKeyCode
 	if keyCode and keyCode ~= Enum.KeyCode.Unknown then
-		pcall(function()
+		local ok = pcall(function()
 			VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-			task.wait(holdDuration)
+			task.wait(releaseDelay)
+			if prompt.Parent and prompt.Enabled then
+				task.wait(0.2)
+			end
 			VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
 		end)
-		return true
+		if ok then
+			return true
+		end
+	end
+
+	if fireproximityprompt then
+		local ok = pcall(function()
+			fireproximityprompt(prompt)
+		end)
+		if ok then
+			return true
+		end
 	end
 
 	return false
@@ -291,7 +399,7 @@ end
 
 function tryInstantInteractPrompt(prompt)
 	if not instantInteractEnabled or instantInteractBusy then return end
-	if not prompt or not prompt.Parent or not prompt.Enabled then return end
+	if not isPromptInteractable(prompt) then return end
 
 	instantInteractBusy = true
 	task.spawn(function()
@@ -391,7 +499,12 @@ waypointPosition = nil
 waypointMarker = nil
 instantInteractEnabled = false
 instantInteractConnection = nil
+instantInteractHiddenConnection = nil
+instantInteractLoop = nil
 instantInteractBusy = false
+instantInteractVisiblePrompts = {}
+instantInteractWhitelistText = ""
+instantInteractBlacklistText = "shop,loja,buy,comprar,sell,vender"
 
 highlights = {}         -- [Character] = Highlight
 overlays = {}           -- [Character] = BillboardGui
@@ -2941,6 +3054,7 @@ configToggleRegistry = {}
 configBindRegistry = {}
 configStatusLabel = nil
 configNameInput = nil
+configSearchInput = nil
 configCodeBox = nil
 configListHolder = nil
 configListLayout = nil
@@ -3948,7 +4062,7 @@ configCategory = createCategory(configPage, "Config")
 configInfoCard = New("Frame", {
 	BackgroundColor3 = C.BgCard,
 	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 0, 674),
+	Size = UDim2.new(1, 0, 0, 718),
 }, configCategory)
 Corner(12, configInfoCard)
 Stroke(C.Divider, 1, configInfoCard).Transparency = 0.2
@@ -4023,10 +4137,34 @@ New("UIPadding", {
 	PaddingRight = UDim.new(0, 12),
 }, configNameInput)
 
-configListHolder = New("Frame", {
+configSearchInput = New("TextBox", {
 	BackgroundColor3 = C.BgInput,
 	BorderSizePixel = 0,
 	Position = UDim2.new(0, 0, 0, 264),
+	Size = UDim2.new(1, 0, 0, 34),
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = C.TxtWhite,
+	PlaceholderColor3 = C.TxtDim,
+	PlaceholderText = "Search Configs",
+	Text = "",
+	ClearTextOnFocus = false,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, configInfoCard)
+Corner(8, configSearchInput)
+Stroke(C.Divider, 1, configSearchInput).Transparency = 0.3
+New("UIPadding", {
+	PaddingLeft = UDim.new(0, 12),
+	PaddingRight = UDim.new(0, 12),
+}, configSearchInput)
+configSearchInput:GetPropertyChangedSignal("Text"):Connect(function()
+	refreshConfigList()
+end)
+
+configListHolder = New("Frame", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 0, 0, 308),
 	Size = UDim2.new(1, 0, 0, 150),
 }, configInfoCard)
 Corner(8, configListHolder)
@@ -4062,7 +4200,7 @@ configListLayout.Parent = configListScroll
 configCodeBox = New("TextBox", {
 	BackgroundColor3 = C.BgInput,
 	BorderSizePixel = 0,
-	Position = UDim2.new(0, 0, 0, 430),
+	Position = UDim2.new(0, 0, 0, 474),
 	Size = UDim2.new(1, 0, 0, 154),
 	Font = Enum.Font.Code,
 	TextSize = 12,
@@ -7226,30 +7364,78 @@ end, "Intercepts local kick attempts sent by the server or other scripts.")
 instantInteractToggle = createToggle(utilsContent, "Instant Interact", function(enabled)
 	instantInteractEnabled = enabled
 	if enabled then
-		if instantInteractConnection then
-			instantInteractConnection:Disconnect()
-		end
+		instantInteractVisiblePrompts = {}
+		if instantInteractConnection then instantInteractConnection:Disconnect() end
+		if instantInteractHiddenConnection then instantInteractHiddenConnection:Disconnect() end
+		if instantInteractLoop then instantInteractLoop:Disconnect() end
+
 		instantInteractConnection = ProximityPromptService.PromptShown:Connect(function(prompt)
-			tryInstantInteractPrompt(prompt)
+			instantInteractVisiblePrompts[prompt] = true
 		end)
+		instantInteractHiddenConnection = ProximityPromptService.PromptHidden:Connect(function(prompt)
+			instantInteractVisiblePrompts[prompt] = nil
+		end)
+
 		task.spawn(function()
 			for _, descendant in ipairs(workspace:GetDescendants()) do
 				if not instantInteractEnabled then
 					break
 				end
 				if descendant:IsA("ProximityPrompt") then
-					tryInstantInteractPrompt(descendant)
-					task.wait(0.05)
+					instantInteractVisiblePrompts[descendant] = true
 				end
 			end
 		end)
+
+		instantInteractLoop = RunService.Heartbeat:Connect(function()
+			if not instantInteractEnabled or instantInteractBusy then return end
+			local bestPrompt = getBestInstantInteractPrompt()
+			if bestPrompt then
+				tryInstantInteractPrompt(bestPrompt)
+			end
+		end)
 	else
-		if instantInteractConnection then
-			instantInteractConnection:Disconnect()
-			instantInteractConnection = nil
-		end
+		if instantInteractConnection then instantInteractConnection:Disconnect() instantInteractConnection = nil end
+		if instantInteractHiddenConnection then instantInteractHiddenConnection:Disconnect() instantInteractHiddenConnection = nil end
+		if instantInteractLoop then instantInteractLoop:Disconnect() instantInteractLoop = nil end
+		instantInteractVisiblePrompts = {}
+		instantInteractBusy = false
 	end
-end, "Detects visible ProximityPrompt interactions and automatically handles hold or click prompts.")
+end, "Targets the best nearby ProximityPrompt, prioritizes Roubar/Collect-style prompts, and handles hold or click automatically.")
+
+instantInteractWhitelistInput = Instance.new("TextBox")
+instantInteractWhitelistInput.Size = UDim2.new(1, 0, 0, 36)
+instantInteractWhitelistInput.BackgroundColor3 = C.BgInput
+instantInteractWhitelistInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+instantInteractWhitelistInput.PlaceholderColor3 = C.TxtDim
+instantInteractWhitelistInput.PlaceholderText = "Instant whitelist: ex. roubar,coletar"
+instantInteractWhitelistInput.Text = instantInteractWhitelistText
+instantInteractWhitelistInput.Font = Enum.Font.Gotham
+instantInteractWhitelistInput.TextSize = 12
+instantInteractWhitelistInput.ClearTextOnFocus = false
+instantInteractWhitelistInput.Parent = utilsContent
+Instance.new("UICorner", instantInteractWhitelistInput).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, instantInteractWhitelistInput).Transparency = 0.25
+instantInteractWhitelistInput:GetPropertyChangedSignal("Text"):Connect(function()
+	instantInteractWhitelistText = instantInteractWhitelistInput.Text or ""
+end)
+
+instantInteractBlacklistInput = Instance.new("TextBox")
+instantInteractBlacklistInput.Size = UDim2.new(1, 0, 0, 36)
+instantInteractBlacklistInput.BackgroundColor3 = C.BgInput
+instantInteractBlacklistInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+instantInteractBlacklistInput.PlaceholderColor3 = C.TxtDim
+instantInteractBlacklistInput.PlaceholderText = "Instant blacklist: ex. shop,loja,buy"
+instantInteractBlacklistInput.Text = instantInteractBlacklistText
+instantInteractBlacklistInput.Font = Enum.Font.Gotham
+instantInteractBlacklistInput.TextSize = 12
+instantInteractBlacklistInput.ClearTextOnFocus = false
+instantInteractBlacklistInput.Parent = utilsContent
+Instance.new("UICorner", instantInteractBlacklistInput).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, instantInteractBlacklistInput).Transparency = 0.25
+instantInteractBlacklistInput:GetPropertyChangedSignal("Text"):Connect(function()
+	instantInteractBlacklistText = instantInteractBlacklistInput.Text or ""
+end)
 
 kickPushToggle = createToggle(utilsContent, "Kick Push Player", function(enabled)
 	toggleKickPush(enabled)
@@ -7947,6 +8133,7 @@ function collectMenuConfig()
 	local configData = {
 		toggles = {},
 		binds = {},
+		values = {},
 	}
 
 	for key, entry in pairs(configToggleRegistry) do
@@ -7963,6 +8150,9 @@ function collectMenuConfig()
 			end
 		end
 	end
+
+	configData.values.instantInteractWhitelistText = instantInteractWhitelistText
+	configData.values.instantInteractBlacklistText = instantInteractBlacklistText
 
 	return configData
 end
@@ -8052,6 +8242,20 @@ function getSortedConfigNames(libraryData)
 	return names
 end
 
+function getConfigTimestampText(value)
+	if type(value) ~= "string" or value == "" then
+		return "--"
+	end
+	return value
+end
+
+function makeConfigTimestamp()
+	local ok, formatted = pcall(function()
+		return os.date("%Y-%m-%d %H:%M:%S")
+	end)
+	return ok and formatted or "unknown"
+end
+
 function selectConfigName(configName)
 	selectedConfigName = configName
 	pendingOverwriteName = nil
@@ -8099,6 +8303,7 @@ function refreshConfigList()
 	end
 
 	local names = getSortedConfigNames(libraryData)
+	local searchText = string.lower((configSearchInput and configSearchInput.Text) or "")
 	if #names == 0 then
 		local emptyLabel = New("TextLabel", {
 			BackgroundTransparency = 1,
@@ -8112,48 +8317,76 @@ function refreshConfigList()
 		return
 	end
 
+	local shownCount = 0
 	for _, configName in ipairs(names) do
-		local row = New("Frame", {
-			BackgroundColor3 = selectedConfigName == configName and C.BindActive or C.BgCard,
-			BorderSizePixel = 0,
-			Size = UDim2.new(1, -8, 0, 34),
-		}, configListScroll)
-		Corner(8, row)
-		Stroke(C.Divider, 1, row).Transparency = 0.25
+		local configData = libraryData.configs and libraryData.configs[configName]
+		if searchText == "" or string.find(string.lower(configName), searchText, 1, true) then
+			shownCount = shownCount + 1
+			local row = New("Frame", {
+				BackgroundColor3 = selectedConfigName == configName and C.BindActive or C.BgCard,
+				BorderSizePixel = 0,
+				Size = UDim2.new(1, -8, 0, 54),
+			}, configListScroll)
+			Corner(8, row)
+			Stroke(C.Divider, 1, row).Transparency = 0.25
 
-		local rowName = New("TextButton", {
+			local rowName = New("TextButton", {
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 10, 0, 4),
+				Size = UDim2.new(1, -92, 0, 20),
+				Font = Enum.Font.GothamSemibold,
+				TextSize = 12,
+				TextColor3 = C.TxtWhite,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = configName,
+				AutoButtonColor = false,
+			}, row)
+
+			New("TextLabel", {
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 10, 0, 24),
+				Size = UDim2.new(1, -92, 0, 22),
+				Font = Enum.Font.Gotham,
+				TextSize = 10,
+				TextColor3 = C.TxtDim,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = "Created: " .. getConfigTimestampText(configData and configData.createdAt) .. " | Last Use: " .. getConfigTimestampText(configData and configData.lastUsed),
+			}, row)
+
+			local loadBtn = New("TextButton", {
+				BackgroundColor3 = C.BindBg,
+				BorderSizePixel = 0,
+				Position = UDim2.new(1, -74, 0.5, -11),
+				Size = UDim2.new(0, 64, 0, 22),
+				Font = Enum.Font.GothamSemibold,
+				TextSize = 11,
+				TextColor3 = C.TxtWhite,
+				Text = "Load",
+				AutoButtonColor = false,
+			}, row)
+			Corner(6, loadBtn)
+
+			rowName.MouseButton1Click:Connect(function()
+				selectConfigName(configName)
+				refreshConfigList()
+			end)
+
+			loadBtn.MouseButton1Click:Connect(function()
+				loadConfig(configName)
+			end)
+		end
+	end
+
+	if shownCount == 0 then
+		local emptySearchLabel = New("TextLabel", {
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 10, 0, 0),
-			Size = UDim2.new(1, -92, 1, 0),
-			Font = Enum.Font.GothamSemibold,
+			Size = UDim2.new(1, -8, 0, 26),
+			Font = Enum.Font.Gotham,
 			TextSize = 12,
-			TextColor3 = C.TxtWhite,
+			TextColor3 = C.TxtDim,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Text = configName,
-			AutoButtonColor = false,
-		}, row)
-
-		local loadBtn = New("TextButton", {
-			BackgroundColor3 = C.BindBg,
-			BorderSizePixel = 0,
-			Position = UDim2.new(1, -74, 0.5, -11),
-			Size = UDim2.new(0, 64, 0, 22),
-			Font = Enum.Font.GothamSemibold,
-			TextSize = 11,
-			TextColor3 = C.TxtWhite,
-			Text = "Load",
-			AutoButtonColor = false,
-		}, row)
-		Corner(6, loadBtn)
-
-		rowName.MouseButton1Click:Connect(function()
-			selectConfigName(configName)
-			refreshConfigList()
-		end)
-
-		loadBtn.MouseButton1Click:Connect(function()
-			loadConfig(configName)
-		end)
+			Text = "No configs match your search.",
+		}, configListScroll)
 	end
 end
 
@@ -8175,7 +8408,7 @@ function saveConfig(configName)
 		return false
 	end
 
-	if libraryData.configs[cleanName] and pendingOverwriteName ~= cleanName then
+	if libraryData.configs[cleanName] and cleanName ~= selectedConfigName and pendingOverwriteName ~= cleanName then
 		pendingOverwriteName = cleanName
 		setConfigStatus("name exists, click Save again to overwrite", Color3.fromRGB(255, 210, 120))
 		showMenuToast("Save Warning", cleanName .. " already exists", Color3.fromRGB(255, 210, 120))
@@ -8183,7 +8416,11 @@ function saveConfig(configName)
 	end
 
 	pendingOverwriteName = nil
-	libraryData.configs[cleanName] = collectMenuConfig()
+	local existingConfig = libraryData.configs[cleanName]
+	local configPayload = collectMenuConfig()
+	configPayload.createdAt = existingConfig and existingConfig.createdAt or makeConfigTimestamp()
+	configPayload.lastUsed = existingConfig and existingConfig.lastUsed or "--"
+	libraryData.configs[cleanName] = configPayload
 	libraryData.lastSelected = cleanName
 
 	local success, saveErr = writeConfigLibrary(libraryData)
@@ -8240,6 +8477,23 @@ function loadConfig(configName)
 		end
 	end
 
+	if type(configData.values) == "table" then
+		if type(configData.values.instantInteractWhitelistText) == "string" then
+			instantInteractWhitelistText = configData.values.instantInteractWhitelistText
+			if instantInteractWhitelistInput then
+				instantInteractWhitelistInput.Text = instantInteractWhitelistText
+			end
+		end
+		if type(configData.values.instantInteractBlacklistText) == "string" then
+			instantInteractBlacklistText = configData.values.instantInteractBlacklistText
+			if instantInteractBlacklistInput then
+				instantInteractBlacklistInput.Text = instantInteractBlacklistText
+			end
+		end
+	end
+
+	configData.lastUsed = makeConfigTimestamp()
+	libraryData.configs[cleanName] = configData
 	libraryData.lastSelected = cleanName
 	writeConfigLibrary(libraryData)
 	selectConfigName(cleanName)
@@ -8315,6 +8569,8 @@ function unloadNightMenu()
 		if _G.hitboxPlayerRemovingConn then _G.hitboxPlayerRemovingConn:Disconnect() _G.hitboxPlayerRemovingConn = nil end
 		if _G.antiRagdollConn then _G.antiRagdollConn:Disconnect() _G.antiRagdollConn = nil end
 		if instantInteractConnection then instantInteractConnection:Disconnect() instantInteractConnection = nil end
+		if instantInteractHiddenConnection then instantInteractHiddenConnection:Disconnect() instantInteractHiddenConnection = nil end
+		if instantInteractLoop then instantInteractLoop:Disconnect() instantInteractLoop = nil end
 	end)
 
 	pcall(function()
@@ -8444,6 +8700,8 @@ function importConfig(configName)
 	end
 
 	pendingImportName = nil
+	importedConfig.createdAt = importedConfig.createdAt or makeConfigTimestamp()
+	importedConfig.lastUsed = importedConfig.lastUsed or "--"
 	libraryData.configs[cleanName] = importedConfig
 	libraryData.lastSelected = cleanName
 
@@ -8493,6 +8751,8 @@ function renameConfig(newName)
 
 	pendingRenameName = nil
 	libraryData.configs[selectedConfigName] = nil
+	oldData.createdAt = oldData.createdAt or makeConfigTimestamp()
+	oldData.lastUsed = oldData.lastUsed or "--"
 	libraryData.configs[cleanName] = oldData
 	libraryData.lastSelected = cleanName
 
@@ -9232,7 +9492,7 @@ createConfigActionButton(configInfoCard, "Import", 0.69, 212, 0.31, function()
 	importConfig()
 end)
 
-createConfigActionButton(configInfoCard, "Unload", 0, 598, 1, function()
+createConfigActionButton(configInfoCard, "Unload", 0, 644, 1, function()
 	unloadNightMenu()
 end)
 
