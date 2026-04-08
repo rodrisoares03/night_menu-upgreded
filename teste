@@ -2717,6 +2717,79 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 999999999
 gui.Parent = playerGui
 
+toastHolder = New("Frame", {
+	Name = "ToastHolder",
+	BackgroundTransparency = 1,
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -24, 0, 24),
+	Size = UDim2.new(0, 320, 1, -48),
+	ZIndex = 10000040,
+}, gui)
+
+toastLayout = Instance.new("UIListLayout")
+toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
+toastLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+toastLayout.Padding = UDim.new(0, 10)
+toastLayout.Parent = toastHolder
+
+function showMenuToast(titleText, bodyText, accentColor)
+	local toast = New("Frame", {
+		BackgroundColor3 = C.BgCard,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 62),
+		BackgroundTransparency = 0.04,
+		ZIndex = 10000041,
+	}, toastHolder)
+	Corner(10, toast)
+	Stroke(accentColor or C.Purple, 1, toast).Transparency = 0.2
+
+	New("Frame", {
+		BackgroundColor3 = accentColor or C.Purple,
+		BorderSizePixel = 0,
+		Size = UDim2.new(0, 4, 1, 0),
+		ZIndex = 10000042,
+	}, toast)
+
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 14, 0, 8),
+		Size = UDim2.new(1, -22, 0, 18),
+		Font = Enum.Font.GothamBold,
+		TextSize = 13,
+		TextColor3 = C.TxtWhite,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = titleText or "Night Menu",
+		ZIndex = 10000042,
+	}, toast)
+
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 14, 0, 28),
+		Size = UDim2.new(1, -22, 0, 24),
+		Font = Enum.Font.Gotham,
+		TextSize = 12,
+		TextColor3 = C.TxtMid,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = bodyText or "",
+		ZIndex = 10000042,
+	}, toast)
+
+	toast.BackgroundTransparency = 1
+	UI_Tween(toast, {BackgroundTransparency = 0.04}, 0.18)
+	task.delay(3.2, function()
+		if toast and toast.Parent then
+			UI_Tween(toast, {BackgroundTransparency = 1}, 0.18)
+			task.delay(0.22, function()
+				if toast and toast.Parent then
+					toast:Destroy()
+				end
+			end)
+		end
+	end)
+end
+
 local activeInlineHints = {}
 local activeBindHints = {}
 local activeBindCapture = nil
@@ -2726,9 +2799,21 @@ configToggleRegistry = {}
 configBindRegistry = {}
 configStatusLabel = nil
 configNameInput = nil
+configCodeBox = nil
 configListHolder = nil
 configListLayout = nil
 selectedConfigName = nil
+pendingOverwriteName = nil
+pendingImportName = nil
+pendingRenameName = nil
+themeStatusLabel = nil
+themePresetLabel = nil
+themeStyleLabel = nil
+themeSizeLabel = nil
+currentThemeName = "Purple Storm"
+currentThemeStyle = "Chunky"
+autoExecuteEnabled = true
+suppressThemeFeedback = false
 MENU_CONFIG_FILE = "night_menu_config.lua"
 local function hideAllInlineHints()
 	for hint in pairs(activeInlineHints) do
@@ -3285,6 +3370,7 @@ local aimbotPage = createPage("AIMBOT")
 local utilPage = createPage("UTIL")
 local infoPage = createPage("INFO")
 configPage = createPage("CONFIG")
+themePage = createPage("THEME")
 for _, child in ipairs(utilPage:GetChildren()) do
 	if child:IsA("UIListLayout") or child:IsA("UIPadding") then
 		child:Destroy()
@@ -3513,6 +3599,7 @@ createTab("AIMBOT", "RAGE", "", 3)
 createTab("UTIL", "Misc", "", 4)
 createTab("INFO", "Info", "", 5)
 createTab("CONFIG", "Config", "", 6)
+createTab("THEME", "Theme", "", 7)
 
 setTab("PLAYERS")
 
@@ -3597,7 +3684,7 @@ configCategory = createCategory(configPage, "Config")
 configInfoCard = New("Frame", {
 	BackgroundColor3 = C.BgCard,
 	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 0, 360),
+	Size = UDim2.new(1, 0, 0, 620),
 }, configCategory)
 Corner(12, configInfoCard)
 Stroke(C.Divider, 1, configInfoCard).Transparency = 0.2
@@ -3675,8 +3762,8 @@ New("UIPadding", {
 configListHolder = New("Frame", {
 	BackgroundColor3 = C.BgInput,
 	BorderSizePixel = 0,
-	Position = UDim2.new(0, 0, 0, 210),
-	Size = UDim2.new(1, 0, 0, 132),
+	Position = UDim2.new(0, 0, 0, 264),
+	Size = UDim2.new(1, 0, 0, 150),
 }, configInfoCard)
 Corner(8, configListHolder)
 Stroke(C.Divider, 1, configListHolder).Transparency = 0.3
@@ -3707,6 +3794,32 @@ configListLayout = Instance.new("UIListLayout")
 configListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 configListLayout.Padding = UDim.new(0, 8)
 configListLayout.Parent = configListScroll
+
+configCodeBox = New("TextBox", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 0, 0, 430),
+	Size = UDim2.new(1, 0, 0, 158),
+	Font = Enum.Font.Code,
+	TextSize = 12,
+	TextColor3 = C.TxtWhite,
+	PlaceholderColor3 = C.TxtDim,
+	PlaceholderText = "Exported Lua text appears here. Paste Lua text here to import.",
+	Text = "",
+	ClearTextOnFocus = false,
+	MultiLine = true,
+	TextWrapped = false,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+}, configInfoCard)
+Corner(8, configCodeBox)
+Stroke(C.Divider, 1, configCodeBox).Transparency = 0.3
+New("UIPadding", {
+	PaddingLeft = UDim.new(0, 12),
+	PaddingRight = UDim.new(0, 12),
+	PaddingTop = UDim.new(0, 10),
+	PaddingBottom = UDim.new(0, 10),
+}, configCodeBox)
 
 function createConfigActionButton(parent, buttonText, xScale, yOffset, widthScale, callback)
 	local button = New("TextButton", {
@@ -7516,6 +7629,9 @@ function readConfigLibrary()
 	if type(data.configs) ~= "table" then
 		data.configs = {}
 	end
+	if type(data.settings) ~= "table" then
+		data.settings = {}
+	end
 
 	return data
 end
@@ -7555,9 +7671,32 @@ end
 
 function selectConfigName(configName)
 	selectedConfigName = configName
+	pendingOverwriteName = nil
+	pendingImportName = nil
+	pendingRenameName = nil
 	if configNameInput then
 		configNameInput.Text = configName or ""
 	end
+end
+
+function updateConfigCodeBox(textValue)
+	if configCodeBox then
+		configCodeBox.Text = textValue or ""
+	end
+end
+
+function saveLibrarySettings()
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		return false, err
+	end
+
+	libraryData.settings.themeName = currentThemeName
+	libraryData.settings.themeStyle = currentThemeStyle
+	libraryData.settings.sizeIndex = currentSizeIndex
+	libraryData.settings.autoExecuteEnabled = autoExecuteEnabled
+
+	return writeConfigLibrary(libraryData)
 end
 
 function refreshConfigList()
@@ -7652,6 +7791,14 @@ function saveConfig(configName)
 		return false
 	end
 
+	if libraryData.configs[cleanName] and pendingOverwriteName ~= cleanName then
+		pendingOverwriteName = cleanName
+		setConfigStatus("name exists, click Save again to overwrite", Color3.fromRGB(255, 210, 120))
+		showMenuToast("Save Warning", cleanName .. " already exists", Color3.fromRGB(255, 210, 120))
+		return false
+	end
+
+	pendingOverwriteName = nil
 	libraryData.configs[cleanName] = collectMenuConfig()
 	libraryData.lastSelected = cleanName
 
@@ -7664,6 +7811,7 @@ function saveConfig(configName)
 	selectConfigName(cleanName)
 	refreshConfigList()
 	setConfigStatus("config saved: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	showMenuToast("Config Saved", cleanName, Color3.fromRGB(170, 255, 170))
 	return true
 end
 
@@ -7713,6 +7861,7 @@ function loadConfig(configName)
 	selectConfigName(cleanName)
 	refreshConfigList()
 	setConfigStatus("config loaded: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	showMenuToast("Config Loaded", cleanName, Color3.fromRGB(170, 220, 255))
 	return true
 end
 
@@ -7748,6 +7897,153 @@ function deleteConfig(configName)
 	selectConfigName(nil)
 	refreshConfigList()
 	setConfigStatus("config deleted: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	showMenuToast("Config Deleted", cleanName, Color3.fromRGB(255, 160, 160))
+	return true
+end
+
+function exportConfig(configName)
+	local cleanName = sanitizeConfigName(configName or (configNameInput and configNameInput.Text) or selectedConfigName)
+	if not cleanName then
+		setConfigStatus("select or type a config name", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		setConfigStatus(err or "unable to read config list", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local configData = libraryData.configs and libraryData.configs[cleanName]
+	if type(configData) ~= "table" then
+		setConfigStatus("config not found: " .. cleanName, Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	updateConfigCodeBox("return " .. serializeLuaValue({
+		name = cleanName,
+		data = configData,
+	}))
+	setConfigStatus("config exported: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	showMenuToast("Config Exported", cleanName, Color3.fromRGB(170, 220, 255))
+	return true
+end
+
+function importConfig(configName)
+	local rawText = configCodeBox and configCodeBox.Text or ""
+	if rawText == "" then
+		setConfigStatus("paste Lua text first", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local loader = loadstring or load
+	if not loader then
+		setConfigStatus("loadstring unavailable", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local chunkSuccess, chunkOrErr = pcall(function()
+		return loader(rawText)
+	end)
+	if not chunkSuccess or not chunkOrErr then
+		setConfigStatus("invalid import text", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local runSuccess, payload = pcall(chunkOrErr)
+	if not runSuccess or type(payload) ~= "table" then
+		setConfigStatus("invalid imported config", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local importedConfig = payload.data or payload
+	if type(importedConfig) ~= "table" then
+		setConfigStatus("import has no config data", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local cleanName = sanitizeConfigName(configName or (configNameInput and configNameInput.Text) or payload.name or selectedConfigName)
+	if not cleanName then
+		setConfigStatus("insert a config name first", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		setConfigStatus(err or "unable to open config list", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	if libraryData.configs[cleanName] and pendingImportName ~= cleanName then
+		pendingImportName = cleanName
+		setConfigStatus("name exists, click Import again to overwrite", Color3.fromRGB(255, 210, 120))
+		showMenuToast("Import Warning", cleanName .. " already exists", Color3.fromRGB(255, 210, 120))
+		return false
+	end
+
+	pendingImportName = nil
+	libraryData.configs[cleanName] = importedConfig
+	libraryData.lastSelected = cleanName
+
+	local success, saveErr = writeConfigLibrary(libraryData)
+	if not success then
+		setConfigStatus("import failed: " .. tostring(saveErr), Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	selectConfigName(cleanName)
+	refreshConfigList()
+	setConfigStatus("config imported: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	showMenuToast("Config Imported", cleanName, Color3.fromRGB(170, 255, 170))
+	return true
+end
+
+function renameConfig(newName)
+	if not selectedConfigName then
+		setConfigStatus("select a config to rename", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local cleanName = sanitizeConfigName(newName or (configNameInput and configNameInput.Text))
+	if not cleanName then
+		setConfigStatus("insert a new config name", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		setConfigStatus(err or "unable to read config list", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local oldData = libraryData.configs and libraryData.configs[selectedConfigName]
+	if type(oldData) ~= "table" then
+		setConfigStatus("selected config no longer exists", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	if cleanName ~= selectedConfigName and libraryData.configs[cleanName] and pendingRenameName ~= cleanName then
+		pendingRenameName = cleanName
+		setConfigStatus("name exists, click Rename again to overwrite", Color3.fromRGB(255, 210, 120))
+		showMenuToast("Rename Warning", cleanName .. " already exists", Color3.fromRGB(255, 210, 120))
+		return false
+	end
+
+	pendingRenameName = nil
+	libraryData.configs[selectedConfigName] = nil
+	libraryData.configs[cleanName] = oldData
+	libraryData.lastSelected = cleanName
+
+	local success, saveErr = writeConfigLibrary(libraryData)
+	if not success then
+		setConfigStatus("rename failed: " .. tostring(saveErr), Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	selectConfigName(cleanName)
+	refreshConfigList()
+	setConfigStatus("config renamed: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	showMenuToast("Config Renamed", cleanName, Color3.fromRGB(170, 255, 170))
 	return true
 end
 
@@ -7963,6 +8259,452 @@ createConfigActionButton(configInfoCard, "Save", 0, 170, 0.235, function()
 	saveConfig()
 end)
 
+THEME_PRESETS = {
+	["Purple Storm"] = {
+		sakura = {
+			primary = Color3.fromRGB(221, 186, 248),
+			secondary = Color3.fromRGB(236, 217, 250),
+			accent = Color3.fromRGB(156, 129, 184),
+			background = Color3.fromRGB(12, 10, 16),
+			surface = Color3.fromRGB(18, 14, 24),
+			surfaceLight = Color3.fromRGB(33, 28, 42),
+			buttonBg = Color3.fromRGB(22, 18, 28),
+			border = Color3.fromRGB(107, 90, 133),
+			text = Color3.fromRGB(244, 244, 248),
+			textMuted = Color3.fromRGB(170, 166, 181),
+		},
+		c = {
+			BgMain = Color3.fromRGB(12, 10, 16),
+			BgSidebar = Color3.fromRGB(15, 12, 20),
+			BgTopbar = Color3.fromRGB(12, 10, 16),
+			BgSection = Color3.fromRGB(18, 14, 24),
+			BgCard = Color3.fromRGB(22, 18, 28),
+			BgInput = Color3.fromRGB(27, 22, 35),
+			Purple = Color3.fromRGB(221, 186, 248),
+			PurpleDark = Color3.fromRGB(107, 90, 133),
+			PurpleGlow = Color3.fromRGB(236, 217, 250),
+			PurpleLine = Color3.fromRGB(121, 102, 149),
+			Pink = Color3.fromRGB(221, 186, 248),
+			TxtWhite = Color3.fromRGB(244, 244, 248),
+			TxtMid = Color3.fromRGB(214, 214, 220),
+			TxtDim = Color3.fromRGB(159, 153, 171),
+			Divider = Color3.fromRGB(72, 63, 89),
+			DividerSoft = Color3.fromRGB(42, 36, 53),
+			ToggleOff = Color3.fromRGB(110, 100, 128),
+			ToggleOn = Color3.fromRGB(221, 186, 248),
+			SliderBg = Color3.fromRGB(27, 24, 34),
+			DropBorder = Color3.fromRGB(121, 102, 149),
+			ActiveTabBg = Color3.fromRGB(27, 22, 35),
+			TabHover = Color3.fromRGB(22, 18, 28),
+			BindBg = Color3.fromRGB(23, 20, 29),
+			BindActive = Color3.fromRGB(78, 67, 99),
+		},
+	},
+	["Ocean"] = {
+		sakura = {
+			primary = Color3.fromRGB(122, 210, 255),
+			secondary = Color3.fromRGB(184, 235, 255),
+			accent = Color3.fromRGB(77, 156, 198),
+			background = Color3.fromRGB(7, 18, 28),
+			surface = Color3.fromRGB(12, 28, 40),
+			surfaceLight = Color3.fromRGB(21, 43, 58),
+			buttonBg = Color3.fromRGB(16, 34, 47),
+			border = Color3.fromRGB(73, 119, 145),
+			text = Color3.fromRGB(235, 247, 255),
+			textMuted = Color3.fromRGB(146, 182, 200),
+		},
+		c = {
+			BgMain = Color3.fromRGB(7, 18, 28),
+			BgSidebar = Color3.fromRGB(10, 24, 35),
+			BgTopbar = Color3.fromRGB(7, 18, 28),
+			BgSection = Color3.fromRGB(12, 28, 40),
+			BgCard = Color3.fromRGB(16, 34, 47),
+			BgInput = Color3.fromRGB(21, 43, 58),
+			Purple = Color3.fromRGB(122, 210, 255),
+			PurpleDark = Color3.fromRGB(73, 119, 145),
+			PurpleGlow = Color3.fromRGB(184, 235, 255),
+			PurpleLine = Color3.fromRGB(108, 174, 205),
+			Pink = Color3.fromRGB(122, 210, 255),
+			TxtWhite = Color3.fromRGB(235, 247, 255),
+			TxtMid = Color3.fromRGB(204, 228, 240),
+			TxtDim = Color3.fromRGB(146, 182, 200),
+			Divider = Color3.fromRGB(45, 74, 92),
+			DividerSoft = Color3.fromRGB(25, 49, 63),
+			ToggleOff = Color3.fromRGB(71, 98, 117),
+			ToggleOn = Color3.fromRGB(122, 210, 255),
+			SliderBg = Color3.fromRGB(22, 45, 60),
+			DropBorder = Color3.fromRGB(108, 174, 205),
+			ActiveTabBg = Color3.fromRGB(21, 43, 58),
+			TabHover = Color3.fromRGB(16, 34, 47),
+			BindBg = Color3.fromRGB(16, 34, 47),
+			BindActive = Color3.fromRGB(55, 96, 124),
+		},
+	},
+	["Crimson"] = {
+		sakura = {
+			primary = Color3.fromRGB(255, 120, 140),
+			secondary = Color3.fromRGB(255, 196, 205),
+			accent = Color3.fromRGB(188, 80, 95),
+			background = Color3.fromRGB(28, 9, 14),
+			surface = Color3.fromRGB(40, 14, 20),
+			surfaceLight = Color3.fromRGB(58, 21, 30),
+			buttonBg = Color3.fromRGB(48, 18, 25),
+			border = Color3.fromRGB(130, 68, 78),
+			text = Color3.fromRGB(255, 241, 244),
+			textMuted = Color3.fromRGB(199, 159, 166),
+		},
+		c = {
+			BgMain = Color3.fromRGB(28, 9, 14),
+			BgSidebar = Color3.fromRGB(34, 11, 16),
+			BgTopbar = Color3.fromRGB(28, 9, 14),
+			BgSection = Color3.fromRGB(40, 14, 20),
+			BgCard = Color3.fromRGB(48, 18, 25),
+			BgInput = Color3.fromRGB(58, 21, 30),
+			Purple = Color3.fromRGB(255, 120, 140),
+			PurpleDark = Color3.fromRGB(130, 68, 78),
+			PurpleGlow = Color3.fromRGB(255, 196, 205),
+			PurpleLine = Color3.fromRGB(198, 91, 108),
+			Pink = Color3.fromRGB(255, 120, 140),
+			TxtWhite = Color3.fromRGB(255, 241, 244),
+			TxtMid = Color3.fromRGB(235, 211, 215),
+			TxtDim = Color3.fromRGB(199, 159, 166),
+			Divider = Color3.fromRGB(96, 45, 56),
+			DividerSoft = Color3.fromRGB(63, 27, 35),
+			ToggleOff = Color3.fromRGB(123, 80, 89),
+			ToggleOn = Color3.fromRGB(255, 120, 140),
+			SliderBg = Color3.fromRGB(62, 25, 33),
+			DropBorder = Color3.fromRGB(198, 91, 108),
+			ActiveTabBg = Color3.fromRGB(58, 21, 30),
+			TabHover = Color3.fromRGB(48, 18, 25),
+			BindBg = Color3.fromRGB(48, 18, 25),
+			BindActive = Color3.fromRGB(103, 49, 61),
+		},
+	},
+}
+
+THEME_STYLES = {
+	Soft = {radius = 8},
+	Sharp = {radius = 3},
+	Chunky = {radius = 14},
+}
+
+function updateThemeStatus()
+	if themePresetLabel then
+		themePresetLabel.Text = "Theme: " .. tostring(currentThemeName)
+	end
+	if themeStyleLabel then
+		themeStyleLabel.Text = "Style: " .. tostring(currentThemeStyle)
+	end
+	if themeSizeLabel and menuSizes and menuSizes[currentSizeIndex] then
+		themeSizeLabel.Text = "Size: " .. tostring(menuSizes[currentSizeIndex].name)
+	end
+	if themeStatusLabel then
+		themeStatusLabel.Text = "Theme status: " .. tostring(currentThemeName) .. " / " .. tostring(currentThemeStyle)
+	end
+	if autoExecThemeBtn then
+		autoExecThemeBtn.Text = autoExecuteEnabled and "Auto Execute: ON" or "Auto Execute: OFF"
+	end
+end
+
+function applyThemePreset(themeName)
+	local preset = THEME_PRESETS[themeName]
+	if not preset then return false end
+
+	local oldColors = {}
+	for key, value in pairs(C) do
+		oldColors[tostring(value)] = preset.c[key] or value
+	end
+	for key, value in pairs(SAKURA) do
+		oldColors[tostring(value)] = preset.sakura[key] or value
+	end
+
+	for key, value in pairs(preset.c) do
+		C[key] = value
+	end
+	for key, value in pairs(preset.sakura) do
+		SAKURA[key] = value
+	end
+
+	for _, obj in ipairs(gui:GetDescendants()) do
+		if obj:IsA("GuiObject") then
+			local replacement = oldColors[tostring(obj.BackgroundColor3)]
+			if replacement then
+				obj.BackgroundColor3 = replacement
+			end
+		end
+		if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+			local replacement = oldColors[tostring(obj.TextColor3)]
+			if replacement then
+				obj.TextColor3 = replacement
+			end
+		end
+		if obj:IsA("UIStroke") then
+			local replacement = oldColors[tostring(obj.Color)]
+			if replacement then
+				obj.Color = replacement
+			end
+		end
+	end
+
+	currentThemeName = themeName
+	updateThemeStatus()
+	if not suppressThemeFeedback then
+		saveLibrarySettings()
+		showMenuToast("Theme Applied", themeName, C.Purple)
+	end
+	return true
+end
+
+function applyThemeStyle(styleName)
+	local styleData = THEME_STYLES[styleName]
+	if not styleData then return false end
+
+	for _, obj in ipairs(gui:GetDescendants()) do
+		if obj:IsA("UICorner") then
+			obj.CornerRadius = UDim.new(0, styleData.radius)
+		end
+	end
+
+	currentThemeStyle = styleName
+	updateThemeStatus()
+	if not suppressThemeFeedback then
+		saveLibrarySettings()
+		showMenuToast("Style Applied", styleName, C.PurpleGlow)
+	end
+	return true
+end
+
+function applyThemeSize(sizeIndex)
+	if not menuSizes or not menuSizes[sizeIndex] then return false end
+
+	currentSizeIndex = sizeIndex
+	local size = menuSizes[currentSizeIndex]
+	resizeUI(size.width, size.height)
+	if menuSizeBtn then
+		menuSizeBtn.Text = "Size: " .. size.name
+	end
+	updateThemeStatus()
+	if not suppressThemeFeedback then
+		saveLibrarySettings()
+		showMenuToast("Size Applied", size.name, C.PurpleGlow)
+	end
+	return true
+end
+
+function getAutoExecuteLoaderSource()
+	return [[
+pcall(function()
+	local loader = loadstring or load
+	if not loader or not readfile then
+		return
+	end
+	local candidates = {"night_menu.luau", "script_roblox.lua", "night_menu_edit.luau"}
+	for _, path in ipairs(candidates) do
+		local ok, src = pcall(readfile, path)
+		if ok and src and src ~= "" then
+			local fn = loader(src)
+			if fn then
+				fn()
+				return
+			end
+		end
+	end
+end)
+]]
+end
+
+function getTeleportQueueFunction()
+	return queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+end
+
+function setupAutoExecute()
+	if not autoExecuteEnabled then
+		return false
+	end
+
+	local loaderSource = getAutoExecuteLoaderSource()
+	if writefile then
+		pcall(function()
+			if makefolder and isfolder and not isfolder("autoexec") then
+				makefolder("autoexec")
+			end
+		end)
+		pcall(function()
+			writefile("autoexec/night_menu_autoexec.lua", loaderSource)
+		end)
+	end
+
+	local queueFn = getTeleportQueueFunction()
+	if queueFn then
+		pcall(function()
+			queueFn(loaderSource)
+		end)
+	end
+
+	return true
+end
+
+function toggleAutoExecute()
+	autoExecuteEnabled = not autoExecuteEnabled
+	saveLibrarySettings()
+	if autoExecuteEnabled then
+		setupAutoExecute()
+		showMenuToast("Auto Execute", "Enabled for autoexec and teleport queue", Color3.fromRGB(170, 255, 170))
+	else
+		showMenuToast("Auto Execute", "Disabled", Color3.fromRGB(255, 170, 170))
+	end
+	updateThemeStatus()
+end
+
+themeCategory = createCategory(themePage, "Theme")
+
+themeCard = New("Frame", {
+	BackgroundColor3 = C.BgCard,
+	BorderSizePixel = 0,
+	Size = UDim2.new(1, 0, 0, 500),
+}, themeCategory)
+Corner(12, themeCard)
+Stroke(C.Divider, 1, themeCard).Transparency = 0.2
+Pad(16, 16, 18, 18, themeCard)
+
+themePresetLabel = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Size = UDim2.new(1, 0, 0, 20),
+	Font = Enum.Font.GothamBold,
+	TextSize = 16,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Theme: " .. currentThemeName,
+}, themeCard)
+
+themeStyleLabel = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 0, 0, 24),
+	Size = UDim2.new(1, 0, 0, 18),
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = C.TxtDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Style: " .. currentThemeStyle,
+}, themeCard)
+
+themeSizeLabel = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 0, 0, 44),
+	Size = UDim2.new(1, 0, 0, 18),
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = C.TxtDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Size: Medium (800x700)",
+}, themeCard)
+
+themeStatusLabel = New("TextLabel", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 0, 0, 72),
+	Size = UDim2.new(1, 0, 0, 34),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Theme status: ready",
+}, themeCard)
+Corner(8, themeStatusLabel)
+Stroke(C.Divider, 1, themeStatusLabel).Transparency = 0.3
+Pad(0, 0, 12, 12, themeStatusLabel)
+
+function createThemeButton(parent, buttonText, xScale, yOffset, callback)
+	local button = New("TextButton", {
+		BackgroundColor3 = C.BindBg,
+		BorderSizePixel = 0,
+		Position = UDim2.new(xScale, 0, 0, yOffset),
+		Size = UDim2.new(0.31, 0, 0, 34),
+		Font = Enum.Font.GothamSemibold,
+		TextSize = 12,
+		TextColor3 = C.TxtWhite,
+		Text = buttonText,
+		AutoButtonColor = false,
+	}, parent)
+	Corner(8, button)
+	Stroke(C.Divider, 1, button).Transparency = 0.25
+	button.MouseButton1Click:Connect(callback)
+	return button
+end
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 0, 0, 122),
+	Size = UDim2.new(1, 0, 0, 18),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Color Presets",
+}, themeCard)
+createThemeButton(themeCard, "Purple", 0, 148, function() applyThemePreset("Purple Storm") end)
+createThemeButton(themeCard, "Ocean", 0.345, 148, function() applyThemePreset("Ocean") end)
+createThemeButton(themeCard, "Crimson", 0.69, 148, function() applyThemePreset("Crimson") end)
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 0, 0, 196),
+	Size = UDim2.new(1, 0, 0, 18),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Style Presets",
+}, themeCard)
+createThemeButton(themeCard, "Soft", 0, 222, function() applyThemeStyle("Soft") end)
+createThemeButton(themeCard, "Sharp", 0.345, 222, function() applyThemeStyle("Sharp") end)
+createThemeButton(themeCard, "Chunky", 0.69, 222, function() applyThemeStyle("Chunky") end)
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 0, 0, 270),
+	Size = UDim2.new(1, 0, 0, 18),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Menu Size",
+}, themeCard)
+createThemeButton(themeCard, "Large", 0, 296, function() applyThemeSize(1) end)
+createThemeButton(themeCard, "Medium", 0.345, 296, function() applyThemeSize(2) end)
+createThemeButton(themeCard, "Small", 0.69, 296, function() applyThemeSize(3) end)
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 0, 0, 344),
+	Size = UDim2.new(1, 0, 0, 18),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Auto Execute",
+}, themeCard)
+
+autoExecThemeBtn = New("TextButton", {
+	BackgroundColor3 = C.BindBg,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 0, 0, 370),
+	Size = UDim2.new(1, 0, 0, 34),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 12,
+	TextColor3 = C.TxtWhite,
+	Text = "Auto Execute: ON",
+	AutoButtonColor = false,
+}, themeCard)
+Corner(8, autoExecThemeBtn)
+Stroke(C.Divider, 1, autoExecThemeBtn).Transparency = 0.25
+autoExecThemeBtn.MouseButton1Click:Connect(function()
+	toggleAutoExecute()
+	if autoExecThemeBtn then
+		autoExecThemeBtn.Text = autoExecuteEnabled and "Auto Execute: ON" or "Auto Execute: OFF"
+	end
+end)
+
 createConfigActionButton(configInfoCard, "Load", 0.255, 170, 0.235, function()
 	loadConfig()
 end)
@@ -7974,7 +8716,55 @@ end)
 createConfigActionButton(configInfoCard, "Reload", 0.765, 170, 0.235, function()
 	refreshConfigList()
 	setConfigStatus("config list reloaded", Color3.fromRGB(170, 255, 170))
+	showMenuToast("Config List", "Reloaded", Color3.fromRGB(170, 220, 255))
 end)
+
+createConfigActionButton(configInfoCard, "Rename", 0, 212, 0.31, function()
+	renameConfig()
+end)
+
+createConfigActionButton(configInfoCard, "Export", 0.345, 212, 0.31, function()
+	exportConfig()
+end)
+
+createConfigActionButton(configInfoCard, "Import", 0.69, 212, 0.31, function()
+	importConfig()
+end)
+
+function applyStoredMenuSettings()
+	local libraryData = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		updateThemeStatus()
+		if autoExecuteEnabled then
+			setupAutoExecute()
+		end
+		return
+	end
+
+	suppressThemeFeedback = true
+	if type(libraryData.settings) == "table" then
+		if libraryData.settings.autoExecuteEnabled ~= nil then
+			autoExecuteEnabled = libraryData.settings.autoExecuteEnabled and true or false
+		end
+		if libraryData.settings.themeName and THEME_PRESETS[libraryData.settings.themeName] then
+			applyThemePreset(libraryData.settings.themeName)
+		end
+		if libraryData.settings.themeStyle and THEME_STYLES[libraryData.settings.themeStyle] then
+			applyThemeStyle(libraryData.settings.themeStyle)
+		end
+		if libraryData.settings.sizeIndex and menuSizes and menuSizes[libraryData.settings.sizeIndex] then
+			applyThemeSize(libraryData.settings.sizeIndex)
+		end
+	end
+	suppressThemeFeedback = false
+
+	updateThemeStatus()
+	if autoExecuteEnabled then
+		setupAutoExecute()
+	end
+end
+
+applyStoredMenuSettings()
 
 
 
