@@ -43,13 +43,7 @@ function isInSameDimension(targetCharacter)
 	local myChar = LocalPlayer.Character
 	if not myChar or not targetCharacter then return false end
 	
-	-- Verificar se ambos estÃ£o no mesmo Parent (mesma dimensÃ£o/mapa)
-	local myParent = myChar.Parent
-	local targetParent = targetCharacter.Parent
-	
-	if myParent ~= targetParent then return false end
-	
-	-- VerificaÃ§Ã£o adicional: verificar se estÃ£o no mesmo workspace ou folder
+	-- Apenas verificamos a distancia para evitar a quebra em jogos que separam players por Pastas/Times
 	local myRoot = myChar:FindFirstChild("HumanoidRootPart")
 	local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
 	
@@ -113,6 +107,8 @@ autofireBind = nil
 autofireBindString = "None"
 thirdPersonBind = nil
 thirdPersonBindString = "None"
+kickPushBind = nil
+kickPushBindString = "None"
 
 -- Dropdown alvo
 targetDropdownOpen = false
@@ -170,6 +166,22 @@ local function bindDisplayName(bindValue, fallbackName)
 	return fallbackName or tostring(bindValue)
 end
 
+function makeConfigKey(labelText)
+	if not labelText then return nil end
+
+	local key = tostring(labelText):lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
+	if key == "" then
+		return nil
+	end
+
+	return key
+end
+
+function registerConfigBind(bindId, entry)
+	if not bindId or type(entry) ~= "table" then return end
+	configBindRegistry[bindId] = entry
+end
+
 -- Free-Fly manual
 FREEFLY_SPEED = 50
 FREEFLY_SPRINT_MULT = 2
@@ -213,6 +225,27 @@ jumpPowerBoostEnabled = false
 jumpPowerBoostValue = 100
 infiniteJumpEnabled = false
 antiKickEnabled = false
+kickPushEnabled = false
+kickPushLastUsed = 0
+kickPushCooldown = 0.85
+kickPushForce = 165
+kickPushUpwardForce = 62
+kickPushSpinForce = 32
+kickPushProjectileSpeed = 220
+kickPushMaxDistance = 15000
+kickPushDriveTime = 0.18
+kickPushScreenRadius = 3000
+kickPushFlingTime = 0.35
+kickPushFlingSpin = 9500
+kickPushFlingRadius = 2.6
+kickPushSideOffset = 0.55
+kickPushLiftOffset = 0.85
+kickPushOrbitSpeed = 14
+kickPushRecoveryDelay = 0.06
+kickPushRetryBurst = 3
+kickPushBurstDelay = 0.08
+kickPushRemoteName = "AdminPushEvent"
+kickPushMissingRemoteWarned = false
 
 -- Valores originais
 originalWalkSpeed = 16
@@ -552,6 +585,331 @@ end
 function magnetAndKill(targetPlayer)
     if not targetPlayer then return end
     magnetPlayer(targetPlayer, true)
+end
+
+local function findKickJoint(character)
+	if not character then return nil end
+
+	return character:FindFirstChild("Right Hip", true)
+		or character:FindFirstChild("RightHip", true)
+		or character:FindFirstChild("Left Hip", true)
+		or character:FindFirstChild("LeftHip", true)
+end
+
+local function playKickPushAnimation(character)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local joint = findKickJoint(character)
+	if not humanoid or not joint or not joint:IsA("Motor6D") then
+		return
+	end
+
+	local originalTransform = joint.Transform
+	local kickPose = humanoid.RigType == Enum.HumanoidRigType.R15
+		and CFrame.Angles(math.rad(-72), 0, math.rad(10))
+		or CFrame.Angles(math.rad(68), 0, math.rad(12))
+
+	local tweenOut = TweenService:Create(joint, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Transform = kickPose
+	})
+	local tweenBack = TweenService:Create(joint, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Transform = originalTransform
+	})
+
+	tweenOut:Play()
+	tweenOut.Completed:Connect(function()
+		tweenBack:Play()
+	end)
+end
+
+local function getPlayerFromCharacterPart(part)
+	if not part then return nil end
+
+	local model = part:FindFirstAncestorOfClass("Model")
+	if not model then return nil end
+
+	return Players:GetPlayerFromCharacter(model)
+end
+
+local function getKickPushTarget()
+	local myChar = LocalPlayer.Character
+	local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	if not myRoot then
+		return nil
+	end
+
+	local mouse = LocalPlayer:GetMouse()
+	local hoveredPlayer = mouse and getPlayerFromCharacterPart(mouse.Target)
+	if hoveredPlayer and hoveredPlayer ~= LocalPlayer and hoveredPlayer.Character and isInSameDimension(hoveredPlayer.Character) then
+		local hoveredHumanoid = hoveredPlayer.Character:FindFirstChildOfClass("Humanoid")
+		local hoveredRoot = hoveredPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if hoveredHumanoid and hoveredRoot and hoveredHumanoid.Health > 0 and (hoveredRoot.Position - myRoot.Position).Magnitude <= kickPushMaxDistance then
+			return hoveredPlayer
+		end
+	end
+
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return nil
+	end
+
+	local cursorPos = UserInputService:GetMouseLocation()
+	local screenCenter = Vector2.new(camera.ViewportSize.X * 0.5, camera.ViewportSize.Y * 0.5)
+	local aimPoint = cursorPos and cursorPos.Magnitude > 0 and cursorPos or screenCenter
+	local bestPlayer = nil
+	local bestDistance = kickPushScreenRadius
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character and isInSameDimension(player.Character) then
+			local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+			local targetHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
+			if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
+				local worldDistance = (targetRoot.Position - myRoot.Position).Magnitude
+				if worldDistance <= kickPushMaxDistance then
+					local screenPos, onScreen = camera:WorldToViewportPoint(targetRoot.Position)
+					if onScreen and screenPos.Z > 0 then
+						local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - aimPoint).Magnitude
+						if screenDistance < bestDistance then
+							bestDistance = screenDistance
+							bestPlayer = player
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return bestPlayer
+end
+
+local function isKickPushTargetValid(targetPlayer)
+	if not targetPlayer or targetPlayer == LocalPlayer then
+		return false
+	end
+
+	local targetCharacter = targetPlayer.Character
+	if not targetCharacter or not isInSameDimension(targetCharacter) then
+		return false
+	end
+
+	local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+	local targetHumanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+	local myCharacter = LocalPlayer.Character
+	local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
+
+	if not targetRoot or not targetHumanoid or not myRoot then
+		return false
+	end
+
+	if targetHumanoid.Health <= 0 then
+		return false
+	end
+
+	return (targetRoot.Position - myRoot.Position).Magnitude <= kickPushMaxDistance
+end
+
+local function requestKickPushServer(targetPlayer)
+	if not targetPlayer or targetPlayer == LocalPlayer then
+		return false
+	end
+
+	local remote = ReplicatedStorage:FindFirstChild(kickPushRemoteName)
+	if remote and remote:IsA("RemoteEvent") then
+		remote:FireServer(targetPlayer)
+		return true
+	end
+
+	if not kickPushMissingRemoteWarned then
+		kickPushMissingRemoteWarned = true
+		warn("[NIGHT MENU] RemoteEvent '" .. kickPushRemoteName .. "' nao encontrado. O empurrao precisa de servidor para funcionar.")
+	end
+
+	return false
+end
+
+local kickPushIsExecuting = false
+
+function performKickPush(targetPlayer)
+	if kickPushIsExecuting then return false end
+	if not isKickPushTargetValid(targetPlayer) then return false end
+	kickPushIsExecuting = true
+
+	local myChar = LocalPlayer.Character
+	if not myChar then return false end
+
+	local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+	local myHumanoid = myChar:FindFirstChildOfClass("Humanoid")
+	local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+
+	if not myRoot or not myHumanoid or not targetRoot or not targetHumanoid then return false end
+	if myHumanoid.Health <= 0 or targetHumanoid.Health <= 0 then return false end
+	if not isInSameDimension(targetPlayer.Character) then return false end
+
+	local origin = myRoot.Position
+	local direction = targetRoot.Position - origin
+	if direction.Magnitude < 0.1 then
+		direction = myRoot.CFrame.LookVector
+	end
+	direction = direction.Unit
+	local distance = (targetRoot.Position - origin).Magnitude
+	if distance > kickPushMaxDistance then
+		return false
+	end
+
+	playKickPushAnimation(myChar)
+
+	local savedCFrame = myRoot.CFrame
+	local savedVelocity = myRoot.AssemblyLinearVelocity
+	local savedAngularVelocity = myRoot.AssemblyAngularVelocity
+	local savedAutoRotate = myHumanoid.AutoRotate
+	local savedPlatformStand = myHumanoid.PlatformStand
+	local savedPhysicalProps = myRoot.CustomPhysicalProperties
+	local savedParts = {}
+	forEachCharacterPart(myChar, function(part)
+		savedParts[part] = part.CanCollide
+		if part.Name ~= "HumanoidRootPart" then
+			part.CanCollide = false
+		end
+	end)
+	if myRoot then
+		myRoot.CanCollide = true
+		myRoot.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
+	end
+
+	-- Bypass de CollisionGroup: jogos que desabilitam colisao entre players bloqueiam o Fling
+	local flingCollider = Instance.new("Part")
+	flingCollider.Name = "FlingCollider"
+	flingCollider.Size = Vector3.new(2, 2, 2)
+	flingCollider.Transparency = 1
+	flingCollider.CanCollide = true
+	flingCollider.Massless = true
+	flingCollider.CollisionGroup = "Default"
+	flingCollider.CFrame = myRoot.CFrame
+	flingCollider.Parent = myChar
+
+	local flingWeld = Instance.new("WeldConstraint")
+	flingWeld.Part0 = myRoot
+	flingWeld.Part1 = flingCollider
+	flingWeld.Parent = flingCollider
+
+	myHumanoid.AutoRotate = false
+	myHumanoid.PlatformStand = false
+	myHumanoid.Sit = false
+	myHumanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+	local flingStart = tick()
+	local flingConnection
+	flingConnection = RunService.Heartbeat:Connect(function()
+		local elapsed = tick() - flingStart
+		if elapsed >= kickPushFlingTime then
+			if flingConnection then
+				flingConnection:Disconnect()
+			end
+			return
+		end
+
+		if not targetPlayer.Character then
+			if flingConnection then
+				flingConnection:Disconnect()
+			end
+			return
+		end
+
+		local liveTargetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local liveTargetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if not liveTargetRoot or not liveTargetHumanoid or liveTargetHumanoid.Health <= 0 then
+			if flingConnection then
+				flingConnection:Disconnect()
+			end
+			return
+		end
+
+		local liveDirection = liveTargetRoot.Position - myRoot.Position
+		local horizontalDirection = Vector3.new(liveDirection.X, 0, liveDirection.Z)
+		if horizontalDirection.Magnitude < 0.1 then
+			horizontalDirection = Vector3.new(direction.X, 0, direction.Z)
+		end
+		if horizontalDirection.Magnitude < 0.1 then
+			horizontalDirection = Vector3.new(myRoot.CFrame.LookVector.X, 0, myRoot.CFrame.LookVector.Z)
+		end
+		horizontalDirection = horizontalDirection.Unit
+
+		local rightVector = horizontalDirection:Cross(Vector3.yAxis)
+		if rightVector.Magnitude < 0.1 then
+			rightVector = Vector3.new(1, 0, 0)
+		else
+			rightVector = rightVector.Unit
+		end
+
+		-- Fling 'Ballerina' Descentralizado (Impede cancelamento nulo em alvos parados)
+		-- Posições perfeitamente sincronizadas (0,0,0) podem fazer a engine anular o impacto. 
+		-- Oscilamos a posição internamente garantindo hitboxes assimétricos e repelindo o alvo.
+		local offset = Vector3.new(1.2, 0, 1.2)
+		if math.floor(elapsed * 20) % 2 == 0 then offset = Vector3.new(-1.2, 0, -1.2) end
+		local desiredPos = liveTargetRoot.Position + offset
+		local desiredCFrame = CFrame.new(desiredPos)
+		
+		local spin = 50000 
+		local spinVector = Vector3.new(0, spin, 0) 
+		-- Velocity ZERO para o seu player! Evita que voce seja lancado para cima
+		local launchVelocity = Vector3.new(0, 0, 0)
+		pcall(function()
+			myRoot.CFrame = desiredCFrame
+			myRoot.AssemblyLinearVelocity = launchVelocity
+			myRoot.AssemblyAngularVelocity = spinVector
+			myRoot.RotVelocity = spinVector
+		end)
+	end)
+
+	task.delay(kickPushFlingTime + kickPushRecoveryDelay, function()
+		if flingConnection then
+			flingConnection:Disconnect()
+		end
+
+		pcall(function()
+			myRoot.Anchored = true
+			myRoot.AssemblyLinearVelocity = Vector3.zero
+			myRoot.AssemblyAngularVelocity = Vector3.zero
+			myRoot.RotVelocity = Vector3.zero
+			myRoot.CFrame = savedCFrame
+			if savedPhysicalProps ~= nil then
+				myRoot.CustomPhysicalProperties = savedPhysicalProps
+			else
+				myRoot.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5)
+			end
+			
+			local collider = myChar:FindFirstChild("FlingCollider")
+			if collider then collider:Destroy() end
+			
+			task.delay(0.1, function()
+				if myRoot and myRoot.Parent then
+					myRoot.AssemblyLinearVelocity = Vector3.zero
+					myRoot.AssemblyAngularVelocity = Vector3.zero
+					myRoot.Anchored = false
+				end
+			end)
+		end)
+
+		for part, canCollide in pairs(savedParts) do
+			if part and part.Parent then
+				part.CanCollide = canCollide
+			end
+		end
+
+		if myHumanoid and myHumanoid.Parent then
+			myHumanoid.AutoRotate = savedAutoRotate
+			myHumanoid.PlatformStand = savedPlatformStand
+			myHumanoid.Sit = false
+			myHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end
+		kickPushIsExecuting = false
+	end)
+
+	return true
+end
+
+function toggleKickPush(enabled)
+	kickPushEnabled = enabled
 end
 
 -- Bugar systems
@@ -2364,6 +2722,14 @@ local activeBindHints = {}
 local activeBindCapture = nil
 local toggleBindActions = {}
 local toggleBindGetters = {}
+configToggleRegistry = {}
+configBindRegistry = {}
+configStatusLabel = nil
+configNameInput = nil
+configListHolder = nil
+configListLayout = nil
+selectedConfigName = nil
+MENU_CONFIG_FILE = "night_menu_config.lua"
 local function hideAllInlineHints()
 	for hint in pairs(activeInlineHints) do
 		if hint and hint.Parent then
@@ -2918,6 +3284,7 @@ local espPage = createPage("ESP")
 local aimbotPage = createPage("AIMBOT")
 local utilPage = createPage("UTIL")
 local infoPage = createPage("INFO")
+configPage = createPage("CONFIG")
 for _, child in ipairs(utilPage:GetChildren()) do
 	if child:IsA("UIListLayout") or child:IsA("UIPadding") then
 		child:Destroy()
@@ -3145,6 +3512,7 @@ createTab("ESP", "ESP", "", 2)
 createTab("AIMBOT", "RAGE", "", 3)
 createTab("UTIL", "Misc", "", 4)
 createTab("INFO", "Info", "", 5)
+createTab("CONFIG", "Config", "", 6)
 
 setTab("PLAYERS")
 
@@ -3224,6 +3592,146 @@ function createCategory(parent, titleText)
 	return contentFrame
 end
 
+configCategory = createCategory(configPage, "Config")
+
+configInfoCard = New("Frame", {
+	BackgroundColor3 = C.BgCard,
+	BorderSizePixel = 0,
+	Size = UDim2.new(1, 0, 0, 360),
+}, configCategory)
+Corner(12, configInfoCard)
+Stroke(C.Divider, 1, configInfoCard).Transparency = 0.2
+
+New("UIPadding", {
+	PaddingTop = UDim.new(0, 16),
+	PaddingBottom = UDim.new(0, 16),
+	PaddingLeft = UDim.new(0, 18),
+	PaddingRight = UDim.new(0, 18),
+}, configInfoCard)
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Size = UDim2.new(1, 0, 0, 24),
+	Font = Enum.Font.GothamBold,
+	TextSize = 18,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Saved Config",
+}, configInfoCard)
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 0, 0, 30),
+	Size = UDim2.new(1, 0, 0, 40),
+	Font = Enum.Font.Gotham,
+	TextSize = 13,
+	TextColor3 = C.TxtDim,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	Text = "Type a config name, save it, and keep all saved configs listed here for later load.",
+}, configInfoCard)
+
+configStatusLabel = New("TextLabel", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 0, 0, 82),
+	Size = UDim2.new(1, 0, 0, 34),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Status: no config loaded",
+}, configInfoCard)
+Corner(8, configStatusLabel)
+Stroke(C.Divider, 1, configStatusLabel).Transparency = 0.3
+
+New("UIPadding", {
+	PaddingLeft = UDim.new(0, 12),
+	PaddingRight = UDim.new(0, 12),
+}, configStatusLabel)
+
+configNameInput = New("TextBox", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 0, 0, 126),
+	Size = UDim2.new(1, 0, 0, 36),
+	Font = Enum.Font.Gotham,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	PlaceholderColor3 = C.TxtDim,
+	PlaceholderText = "Insert config name",
+	Text = "",
+	ClearTextOnFocus = false,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, configInfoCard)
+Corner(8, configNameInput)
+Stroke(C.Divider, 1, configNameInput).Transparency = 0.3
+New("UIPadding", {
+	PaddingLeft = UDim.new(0, 12),
+	PaddingRight = UDim.new(0, 12),
+}, configNameInput)
+
+configListHolder = New("Frame", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 0, 0, 210),
+	Size = UDim2.new(1, 0, 0, 132),
+}, configInfoCard)
+Corner(8, configListHolder)
+Stroke(C.Divider, 1, configListHolder).Transparency = 0.3
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 12, 0, 8),
+	Size = UDim2.new(1, -24, 0, 18),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Saved Configs",
+}, configListHolder)
+
+configListScroll = New("ScrollingFrame", {
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Position = UDim2.new(0, 8, 0, 30),
+	Size = UDim2.new(1, -16, 1, -38),
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ScrollBarThickness = 4,
+	ScrollBarImageColor3 = C.Purple,
+}, configListHolder)
+
+configListLayout = Instance.new("UIListLayout")
+configListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+configListLayout.Padding = UDim.new(0, 8)
+configListLayout.Parent = configListScroll
+
+function createConfigActionButton(parent, buttonText, xScale, yOffset, widthScale, callback)
+	local button = New("TextButton", {
+		BackgroundColor3 = C.BindBg,
+		BorderSizePixel = 0,
+		Position = UDim2.new(xScale, 0, 0, yOffset or 170),
+		Size = UDim2.new(widthScale or 0.48, 0, 0, 34),
+		Font = Enum.Font.GothamSemibold,
+		TextSize = 13,
+		TextColor3 = C.TxtWhite,
+		Text = buttonText,
+		AutoButtonColor = false,
+	}, parent)
+	Corner(8, button)
+	Stroke(C.Divider, 1, button).Transparency = 0.25
+	button.MouseEnter:Connect(function()
+		UI_Tween(button, {BackgroundColor3 = C.TabHover}, 0.15)
+	end)
+	button.MouseLeave:Connect(function()
+		UI_Tween(button, {BackgroundColor3 = C.BindBg}, 0.15)
+	end)
+	button.MouseButton1Click:Connect(callback)
+	return button
+end
+
 -- Nova Helper para auto-size das Subcategorias feitas manualmente
 function bindAutoSize(frame, layout)
 	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -3236,6 +3744,10 @@ end
 function createToggle(parent, text, callback, tooltipText, options)
 	options = options or {}
 	local state = false
+	local configKey = options.configKey
+	if configKey == nil then
+		configKey = makeConfigKey(text)
+	end
 	local hasDescription = tooltipText and tooltipText ~= ""
 	local hasBindGear = options.bindId and options.getBindValue and options.getBindName and options.setBind
 	local f = New("Frame", {
@@ -3500,6 +4012,22 @@ function createToggle(parent, text, callback, tooltipText, options)
 
 	applyToggleVisuals(false)
 	refreshBindTag()
+	if configKey then
+		configToggleRegistry[configKey] = {
+			getState = function() return state end,
+			setState = setState,
+			label = text,
+		}
+	end
+	if hasBindGear then
+		registerConfigBind(options.bindId, {
+			getBindValue = options.getBindValue,
+			getBindName = options.getBindName,
+			setBind = options.setBind,
+			refreshBindTag = refreshBindTag,
+			label = text,
+		})
+	end
 	if options.onReady then
 		options.onReady({
 			setState = setState,
@@ -3548,7 +4076,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 
-	if processed or isTypingInSearch then
+	if isTypingInSearch then
 		return
 	end
 
@@ -3561,6 +4089,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 				return
 			end
 		end
+	end
+
+	if processed then
+		return
 	end
 end)
 
@@ -6314,6 +6846,45 @@ antiKickToggle = createToggle(utilsContent, "Anti-Kick", function(enabled)
 	end
 end, "Intercepts local kick attempts sent by the server or other scripts.")
 
+kickPushToggle = createToggle(utilsContent, "Kick Push Player", function(enabled)
+	toggleKickPush(enabled)
+end, "Empurra automaticamente o player no cursor ou mais perto da mira.", {
+	bindId = "kickPush",
+	getBindValue = function() return kickPushBind end,
+	getBindName = function() return kickPushBindString end,
+	setBind = function(bindValue, bindName)
+		kickPushBind = bindValue
+		kickPushBindString = bindDisplayName(bindValue, bindName)
+	end,
+})
+toggleBindActions["kickPush"] = function()
+	-- The check 'if not kickPushEnabled then return end' has been removed so the bind works independently of the toggle ui
+	if tick() - kickPushLastUsed < kickPushCooldown then
+		return
+	end
+	local targetPlayer = getKickPushTarget()
+	if not isKickPushTargetValid(targetPlayer) then
+		targetPlayer = selectedPlayer
+	end
+	if not isKickPushTargetValid(targetPlayer) then
+		return
+	end
+
+	kickPushLastUsed = tick()
+	task.spawn(function()
+		for attempt = 1, kickPushRetryBurst do
+			pcall(function()
+				if not requestKickPushServer(targetPlayer) then
+					performKickPush(targetPlayer)
+				end
+			end)
+			if attempt < kickPushRetryBurst and isKickPushTargetValid(targetPlayer) then
+				task.wait(kickPushBurstDelay)
+			end
+		end
+	end)
+end
+
 -- TP para Cursor com Bind
 tpToCursorBind = nil
 tpToCursorBindString = "None"
@@ -6338,6 +6909,15 @@ function setTPCursorBind(bindValue, bindName)
 	tpCursorBindBtn.BackgroundColor3 = C.BindBg
 	tpCursorBindListening = false
 end
+
+registerConfigBind("tp_cursor", {
+	getBindValue = function() return tpToCursorBind end,
+	getBindName = function() return tpToCursorBindString end,
+	setBind = function(bindValue, bindName)
+		setTPCursorBind(bindValue, bindName or bindDisplayName(bindValue, bindName))
+	end,
+	label = "TP Cursor Bind",
+})
 
 tpCursorBindListening = false
 tpCursorBindBtn.MouseButton1Click:Connect(function()
@@ -6376,6 +6956,15 @@ function setMenuBind(bindValue, bindName)
 	menuBindBtn.BackgroundColor3 = C.BindBg
 	menuBindListening = false
 end
+
+registerConfigBind("menu_toggle", {
+	getBindValue = function() return UI_TOGGLE_KEY end,
+	getBindName = function() return bindDisplayName(UI_TOGGLE_KEY, "None") end,
+	setBind = function(bindValue, bindName)
+		setMenuBind(bindValue, bindName or bindDisplayName(bindValue, bindName))
+	end,
+	label = "Menu Bind",
+})
 
 menuBindBorder = Instance.new("UIStroke")
 menuBindBorder.Color = SAKURA.border
@@ -6787,17 +7376,379 @@ currentAimbotTarget = nil
 lastTargetUpdateTime = 0
 
 -- Sistema de salvamento
-function saveConfig()
-	if not writefile then return end
-	pcall(function()
-		writefile("sexo_config.json", HttpService:JSONEncode({aimbotEnabled=aimbotEnabled,espEnabled=espEnabled,showSkeleton=showSkeleton,showBox3D=showBox3D,showTracers=showTracers,showEspDistance=showEspDistance,showName=showName,showHealth=showHealth,aimbotBindString=aimbotBindString,aimbotFOV=aimbotFOV,aimbotSmooth=aimbotSmooth,aimbotTarget=aimbotTarget,speedBoostEnabled=speedBoostEnabled,speedBoostValue=speedBoostValue,jumpPowerBoostEnabled=jumpPowerBoostEnabled,jumpPowerBoostValue=jumpPowerBoostValue}))
-	end)
+function setConfigStatus(message, color)
+	if not configStatusLabel then return end
+	configStatusLabel.Text = "Status: " .. tostring(message)
+	configStatusLabel.TextColor3 = color or C.TxtWhite
 end
 
-function loadConfig()
-	if not isfile or not readfile or not isfile("sexo_config.json") then return end
-	local s,d=pcall(function()return HttpService:JSONDecode(readfile("sexo_config.json"))end)
-if s and d then aimbotEnabled=d.aimbotEnabled or false espEnabled=d.espEnabled or false showSkeleton=d.showSkeleton~=false showBox3D=d.showBox3D~=false showTracers=d.showTracers~=false showEspDistance=d.showEspDistance~=false showName=d.showName~=false showHealth=d.showHealth~=false aimbotBindString=d.aimbotBindString or"MouseRight"aimbotFOV=d.aimbotFOV or 100 aimbotSmooth=d.aimbotSmooth or 5 aimbotTarget=d.aimbotTarget or"Head"speedBoostEnabled=d.speedBoostEnabled or false speedBoostValue=d.speedBoostValue or 50 jumpPowerBoostEnabled=d.jumpPowerBoostEnabled or false jumpPowerBoostValue=d.jumpPowerBoostValue or 100 end
+function serializeBindValue(bindValue)
+	if typeof(bindValue) == "EnumItem" then
+		return {kind = "KeyCode", value = bindValue.Name}
+	end
+
+	if type(bindValue) == "string" and bindValue ~= "" then
+		return {kind = "Mouse", value = bindValue}
+	end
+
+	return nil
+end
+
+function deserializeBindValue(bindData)
+	if type(bindData) ~= "table" then
+		return nil, "None"
+	end
+
+	if bindData.kind == "KeyCode" and type(bindData.value) == "string" then
+		local keyCode = Enum.KeyCode[bindData.value]
+		if keyCode then
+			return keyCode, bindData.value
+		end
+	elseif bindData.kind == "Mouse" and type(bindData.value) == "string" then
+		return bindData.value, bindData.value
+	end
+
+	return nil, "None"
+end
+
+function serializeLuaValue(value, depth)
+	depth = depth or 0
+	local valueType = type(value)
+
+	if valueType == "table" then
+		local keys = {}
+		for key in pairs(value) do
+			table.insert(keys, key)
+		end
+		table.sort(keys, function(a, b)
+			return tostring(a) < tostring(b)
+		end)
+
+		local indent = string.rep("\t", depth)
+		local childIndent = string.rep("\t", depth + 1)
+		local parts = {"{"}
+		for _, key in ipairs(keys) do
+			local serializedKey
+			if type(key) == "string" and key:match("^[%a_][%w_]*$") then
+				serializedKey = key
+			else
+				serializedKey = "[" .. serializeLuaValue(key, depth + 1) .. "]"
+			end
+			table.insert(parts, childIndent .. serializedKey .. " = " .. serializeLuaValue(value[key], depth + 1) .. ",")
+		end
+		table.insert(parts, indent .. "}")
+		return table.concat(parts, "\n")
+	elseif valueType == "string" then
+		return string.format("%q", value)
+	elseif valueType == "number" or valueType == "boolean" then
+		return tostring(value)
+	end
+
+	return "nil"
+end
+
+function collectMenuConfig()
+	local configData = {
+		toggles = {},
+		binds = {},
+	}
+
+	for key, entry in pairs(configToggleRegistry) do
+		if entry and entry.getState then
+			configData.toggles[key] = entry.getState() and true or false
+		end
+	end
+
+	for bindId, entry in pairs(configBindRegistry) do
+		if entry and entry.getBindValue then
+			local serializedBind = serializeBindValue(entry.getBindValue())
+			if serializedBind then
+				configData.binds[bindId] = serializedBind
+			end
+		end
+	end
+
+	return configData
+end
+
+function sanitizeConfigName(configName)
+	if type(configName) ~= "string" then
+		return nil
+	end
+
+	local cleanName = configName:gsub("^%s+", ""):gsub("%s+$", "")
+	if cleanName == "" then
+		return nil
+	end
+
+	return cleanName:sub(1, 32)
+end
+
+function readConfigLibrary()
+	if not isfile or not readfile or not isfile(MENU_CONFIG_FILE) then
+		return {configs = {}}
+	end
+
+	local readSuccess, fileContent = pcall(function()
+		return readfile(MENU_CONFIG_FILE)
+	end)
+	if not readSuccess then
+		return nil, fileContent
+	end
+
+	local loader = loadstring or load
+	if not loader then
+		return nil, "loadstring unavailable"
+	end
+
+	local chunkSuccess, chunkOrErr = pcall(function()
+		return loader(fileContent)
+	end)
+	if not chunkSuccess or not chunkOrErr then
+		return nil, chunkOrErr or "invalid config chunk"
+	end
+
+	local runSuccess, data = pcall(chunkOrErr)
+	if not runSuccess or type(data) ~= "table" then
+		return nil, data or "invalid config data"
+	end
+
+	if type(data.configs) ~= "table" then
+		data.configs = {}
+	end
+
+	return data
+end
+
+function writeConfigLibrary(libraryData)
+	if not writefile then
+		return false, "executor has no writefile"
+	end
+
+	local serialized = "return " .. serializeLuaValue(libraryData)
+	local success, err = pcall(function()
+		writefile(MENU_CONFIG_FILE, serialized)
+	end)
+	if not success then
+		return false, err
+	end
+
+	return true
+end
+
+function getSortedConfigNames(libraryData)
+	local names = {}
+	if type(libraryData) ~= "table" or type(libraryData.configs) ~= "table" then
+		return names
+	end
+
+	for configName in pairs(libraryData.configs) do
+		table.insert(names, configName)
+	end
+
+	table.sort(names, function(a, b)
+		return tostring(a):lower() < tostring(b):lower()
+	end)
+
+	return names
+end
+
+function selectConfigName(configName)
+	selectedConfigName = configName
+	if configNameInput then
+		configNameInput.Text = configName or ""
+	end
+end
+
+function refreshConfigList()
+	if not configListScroll then return end
+
+	for _, child in ipairs(configListScroll:GetChildren()) do
+		if not child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		setConfigStatus(err or "unable to read config list", Color3.fromRGB(255, 120, 120))
+		return
+	end
+
+	local names = getSortedConfigNames(libraryData)
+	if #names == 0 then
+		local emptyLabel = New("TextLabel", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -8, 0, 26),
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			TextColor3 = C.TxtDim,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = "No saved configs yet.",
+		}, configListScroll)
+		return
+	end
+
+	for _, configName in ipairs(names) do
+		local row = New("Frame", {
+			BackgroundColor3 = selectedConfigName == configName and C.BindActive or C.BgCard,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, -8, 0, 34),
+		}, configListScroll)
+		Corner(8, row)
+		Stroke(C.Divider, 1, row).Transparency = 0.25
+
+		local rowName = New("TextButton", {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0, 10, 0, 0),
+			Size = UDim2.new(1, -92, 1, 0),
+			Font = Enum.Font.GothamSemibold,
+			TextSize = 12,
+			TextColor3 = C.TxtWhite,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = configName,
+			AutoButtonColor = false,
+		}, row)
+
+		local loadBtn = New("TextButton", {
+			BackgroundColor3 = C.BindBg,
+			BorderSizePixel = 0,
+			Position = UDim2.new(1, -74, 0.5, -11),
+			Size = UDim2.new(0, 64, 0, 22),
+			Font = Enum.Font.GothamSemibold,
+			TextSize = 11,
+			TextColor3 = C.TxtWhite,
+			Text = "Load",
+			AutoButtonColor = false,
+		}, row)
+		Corner(6, loadBtn)
+
+		rowName.MouseButton1Click:Connect(function()
+			selectConfigName(configName)
+			refreshConfigList()
+		end)
+
+		loadBtn.MouseButton1Click:Connect(function()
+			loadConfig(configName)
+		end)
+	end
+end
+
+function saveConfig(configName)
+	if not writefile then
+		setConfigStatus("executor has no writefile", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local cleanName = sanitizeConfigName(configName or (configNameInput and configNameInput.Text) or selectedConfigName)
+	if not cleanName then
+		setConfigStatus("insert a config name first", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		setConfigStatus(err or "unable to open config list", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	libraryData.configs[cleanName] = collectMenuConfig()
+	libraryData.lastSelected = cleanName
+
+	local success, saveErr = writeConfigLibrary(libraryData)
+	if not success then
+		setConfigStatus("save failed: " .. tostring(saveErr), Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	selectConfigName(cleanName)
+	refreshConfigList()
+	setConfigStatus("config saved: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	return true
+end
+
+function loadConfig(configName)
+	local cleanName = sanitizeConfigName(configName or (configNameInput and configNameInput.Text) or selectedConfigName)
+	if not cleanName then
+		setConfigStatus("select or type a config name", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		setConfigStatus(err or "unable to read config list", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local configData = libraryData.configs and libraryData.configs[cleanName]
+	if type(configData) ~= "table" then
+		setConfigStatus("config not found: " .. cleanName, Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	if type(configData.binds) == "table" then
+		for bindId, bindData in pairs(configData.binds) do
+			local entry = configBindRegistry[bindId]
+			if entry and entry.setBind then
+				local bindValue, bindName = deserializeBindValue(bindData)
+				entry.setBind(bindValue, bindName)
+				if entry.refreshBindTag then
+					entry.refreshBindTag()
+				end
+			end
+		end
+	end
+
+	if type(configData.toggles) == "table" then
+		for key, savedState in pairs(configData.toggles) do
+			local entry = configToggleRegistry[key]
+			if entry and entry.setState and type(savedState) == "boolean" then
+				entry.setState(savedState, true)
+			end
+		end
+	end
+
+	libraryData.lastSelected = cleanName
+	writeConfigLibrary(libraryData)
+	selectConfigName(cleanName)
+	refreshConfigList()
+	setConfigStatus("config loaded: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	return true
+end
+
+function deleteConfig(configName)
+	local cleanName = sanitizeConfigName(configName or (configNameInput and configNameInput.Text) or selectedConfigName)
+	if not cleanName then
+		setConfigStatus("select or type a config name", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	local libraryData, err = readConfigLibrary()
+	if type(libraryData) ~= "table" then
+		setConfigStatus(err or "unable to read config list", Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	if not libraryData.configs or not libraryData.configs[cleanName] then
+		setConfigStatus("config not found: " .. cleanName, Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	libraryData.configs[cleanName] = nil
+	if libraryData.lastSelected == cleanName then
+		libraryData.lastSelected = nil
+	end
+
+	local success, saveErr = writeConfigLibrary(libraryData)
+	if not success then
+		setConfigStatus("delete failed: " .. tostring(saveErr), Color3.fromRGB(255, 120, 120))
+		return false
+	end
+
+	selectConfigName(nil)
+	refreshConfigList()
+	setConfigStatus("config deleted: " .. cleanName, Color3.fromRGB(170, 255, 170))
+	return true
 end
 
 -- Continuous aiming
@@ -6924,33 +7875,6 @@ function clearAllESPVisuals()
 	healthBars = {}
 end
 
-function loadConfig()
-	if not isfile or not readfile or not isfile("sexo_config.json") then return end
-	local ok, data = pcall(function()
-		return HttpService:JSONDecode(readfile("sexo_config.json"))
-	end)
-	if not ok or type(data) ~= "table" then return end
-
-	-- Never auto-enable visual/combat toggles on load.
-	aimbotEnabled = false
-	espEnabled = false
-	showSkeleton = false
-	showBox3D = false
-	showTracers = false
-	showEspDistance = false
-	showName = false
-	showHealth = false
-	speedBoostEnabled = false
-	jumpPowerBoostEnabled = false
-
-	aimbotBindString = data.aimbotBindString or "MouseRight"
-	aimbotFOV = data.aimbotFOV or 100
-	aimbotSmooth = data.aimbotSmooth or 5
-aimbotTarget = data.aimbotTarget or "Head"
-	speedBoostValue = data.speedBoostValue or 50
-	jumpPowerBoostValue = data.jumpPowerBoostValue or 100
-end
-
 function initESPPlayerEvents()
 	for _, player in ipairs(Players:GetPlayers()) do
 		setupPlayer(player)
@@ -7007,7 +7931,6 @@ initESPPlayerEvents()
 
 function bootNightMenu()
 	local success, err = pcall(function()
-		loadConfig()
 		clearAllESPVisuals()
 		for _, plr in ipairs(Players:GetPlayers()) do
 			if plr ~= LocalPlayer then
@@ -7023,6 +7946,11 @@ function bootNightMenu()
 		if utilPage then
 			utilPage.CanvasPosition = Vector2.new(0, 0)
 		end
+		local libraryData = readConfigLibrary()
+		if type(libraryData) == "table" then
+			selectConfigName(libraryData.lastSelected)
+		end
+		refreshConfigList()
 	end)
 	if not success then
 		warn("Erro ao inicializar painel: " .. tostring(err))
@@ -7030,6 +7958,23 @@ function bootNightMenu()
 end
 
 bootNightMenu()
+
+createConfigActionButton(configInfoCard, "Save", 0, 170, 0.235, function()
+	saveConfig()
+end)
+
+createConfigActionButton(configInfoCard, "Load", 0.255, 170, 0.235, function()
+	loadConfig()
+end)
+
+createConfigActionButton(configInfoCard, "Delete", 0.51, 170, 0.235, function()
+	deleteConfig()
+end)
+
+createConfigActionButton(configInfoCard, "Reload", 0.765, 170, 0.235, function()
+	refreshConfigList()
+	setConfigStatus("config list reloaded", Color3.fromRGB(170, 255, 170))
+end)
 
 
 
@@ -7103,7 +8048,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
--- NOVO: Sistema Anti-AFK AperfeiÃ§oado
+--Sistema Anti-AFK
 LocalPlayer.Idled:Connect(function()
 	VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 	task.wait(1)
