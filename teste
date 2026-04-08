@@ -2810,9 +2810,11 @@ themeStatusLabel = nil
 themePresetLabel = nil
 themeStyleLabel = nil
 themeSizeLabel = nil
+themeButtonGroups = {}
 currentThemeName = "Purple Storm"
 currentThemeStyle = "Chunky"
 autoExecuteEnabled = true
+hasCustomSizePreference = false
 suppressThemeFeedback = false
 MENU_CONFIG_FILE = "night_menu_config.lua"
 local function hideAllInlineHints()
@@ -3248,7 +3250,7 @@ Pad(14, 18, 24, 24, content)
 -- Pages (ScrollingFrames que preenchem o content)
 pages = {}
 tabs = {}
-currentTab = "PLAYERS"
+currentTab = "UPDATES"
 
 -- Padding unificado para todas as abas (lateral igual Ã  aba Misc)
 local PAGE_PADDING_TOP, PAGE_PADDING_BOTTOM = 20, 20
@@ -3273,7 +3275,7 @@ function createPage(name)
 end
 
 function createTab(name, text, icon, order)
-	local active = (name == "PLAYERS")
+	local active = (name == "UPDATES")
 	local tab = New("TextButton", {
 		Name = name .. "Tab",
 		LayoutOrder = order,
@@ -3364,6 +3366,7 @@ function setTab(tabName)
 		end)
 	end
 end
+local updatesPage = createPage("UPDATES")
 local playersPage = createPage("PLAYERS")
 local espPage = createPage("ESP")
 local aimbotPage = createPage("AIMBOT")
@@ -3592,16 +3595,135 @@ Players.PlayerAdded:Connect(refreshInfoPage)
 Players.PlayerRemoving:Connect(refreshInfoPage)
 refreshInfoPage()
 
+updatesHeroCard = New("Frame", {
+	BackgroundColor3 = C.BgCard,
+	BorderSizePixel = 0,
+	Size = UDim2.new(1, 0, 0, 134),
+}, updatesPage)
+Corner(12, updatesHeroCard)
+Stroke(C.Divider, 1, updatesHeroCard).Transparency = 0.2
 
-createTab("PLAYERS", "Players", "", 1)
-createTab("ESP", "ESP", "", 2)
-createTab("AIMBOT", "RAGE", "", 3)
-createTab("UTIL", "Misc", "", 4)
-createTab("INFO", "Info", "", 5)
-createTab("CONFIG", "Config", "", 6)
-createTab("THEME", "Theme", "", 7)
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 18, 0, 16),
+	Size = UDim2.new(1, -36, 0, 24),
+	Font = Enum.Font.GothamBold,
+	TextSize = 20,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Atualizacoes do Night Menu",
+}, updatesHeroCard)
 
-setTab("PLAYERS")
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 18, 0, 46),
+	Size = UDim2.new(1, -36, 0, 18),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 13,
+	TextColor3 = C.PurpleGlow,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Atualizado em: 2026-04-08",
+}, updatesHeroCard)
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 18, 0, 72),
+	Size = UDim2.new(1, -36, 0, 42),
+	Font = Enum.Font.Gotham,
+	TextSize = 13,
+	TextColor3 = C.TxtDim,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	Text = "Esta pagina mostra as ultimas alteracoes feitas no menu para que a primeira coisa que vejas seja o que mudou.",
+}, updatesHeroCard)
+
+function createUpdateEntry(parent, titleText, dateText, bodyText)
+	local card = New("Frame", {
+		BackgroundColor3 = C.BgCard,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 112),
+	}, parent)
+	Corner(10, card)
+	Stroke(C.Divider, 1, card).Transparency = 0.25
+
+	New("Frame", {
+		BackgroundColor3 = C.Purple,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 0, 0, 0),
+		Size = UDim2.new(0, 4, 1, 0),
+	}, card)
+
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 18, 0, 14),
+		Size = UDim2.new(1, -36, 0, 22),
+		Font = Enum.Font.GothamBold,
+		TextSize = 15,
+		TextColor3 = C.TxtWhite,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = titleText,
+	}, card)
+
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 18, 0, 38),
+		Size = UDim2.new(1, -36, 0, 16),
+		Font = Enum.Font.GothamSemibold,
+		TextSize = 11,
+		TextColor3 = C.PurpleGlow,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = dateText,
+	}, card)
+
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 18, 0, 60),
+		Size = UDim2.new(1, -36, 0, 38),
+		Font = Enum.Font.Gotham,
+		TextSize = 12,
+		TextColor3 = C.TxtMid,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = bodyText,
+	}, card)
+
+	return card
+end
+
+createUpdateEntry(
+	updatesPage,
+	"Aba Updates Adicionada",
+	"2026-04-08",
+	"A sidebar agora abre numa pagina dedicada de Updates que mostra a data do patch mais recente e as principais alteracoes feitas no menu."
+)
+
+createUpdateEntry(
+	updatesPage,
+	"Sistema de Config Expandido",
+	"2026-04-08",
+	"As configs agora suportam saves com nome, Load, Delete, Rename, Export e Import por texto Lua, Reload da lista e confirmacao de overwrite."
+)
+
+createUpdateEntry(
+	updatesPage,
+	"Theme E Auto Execute",
+	"2026-04-08",
+	"O menu agora inclui uma aba Theme com presets, controlo de size, estilo Chunky por defeito, toasts melhorados e auto execute em teleports."
+)
+
+
+createTab("UPDATES", "Updates", "", 1)
+createTab("PLAYERS", "Players", "", 2)
+createTab("ESP", "ESP", "", 3)
+createTab("AIMBOT", "RAGE", "", 4)
+createTab("UTIL", "Misc", "", 5)
+createTab("INFO", "Info", "", 6)
+createTab("CONFIG", "Config", "", 7)
+createTab("THEME", "Theme", "", 8)
+
+setTab("UPDATES")
 
 -- Garantir que o menu abra ao carregar (evita tela preta / "nÃ£o abre")
 panelVisible = true
@@ -7105,11 +7227,12 @@ end)
 
 -- Seletor de tamanho do menu
 menuSizes = {
+	{name = "Padrao (960x600)", width = 960, height = 600},
 	{name = "Grande (900x750)", width = 900, height = 750},
 	{name = "Medio (800x700)", width = 800, height = 700},
 	{name = "Pequeno (700x600)", width = 700, height = 600}
 }
-currentSizeIndex = 2
+currentSizeIndex = 1
 
 
 menuSizeBtn = Instance.new("TextButton")
@@ -7694,6 +7817,7 @@ function saveLibrarySettings()
 	libraryData.settings.themeName = currentThemeName
 	libraryData.settings.themeStyle = currentThemeStyle
 	libraryData.settings.sizeIndex = currentSizeIndex
+	libraryData.settings.hasCustomSizePreference = hasCustomSizePreference and true or false
 	libraryData.settings.autoExecuteEnabled = autoExecuteEnabled
 
 	return writeConfigLibrary(libraryData)
@@ -8399,10 +8523,30 @@ function updateThemeStatus()
 		themeSizeLabel.Text = "Size: " .. tostring(menuSizes[currentSizeIndex].name)
 	end
 	if themeStatusLabel then
-		themeStatusLabel.Text = "Theme status: " .. tostring(currentThemeName) .. " / " .. tostring(currentThemeStyle)
+		themeStatusLabel.Text = "Active theme: " .. tostring(currentThemeName) .. " / " .. tostring(currentThemeStyle)
 	end
 	if autoExecThemeBtn then
 		autoExecThemeBtn.Text = autoExecuteEnabled and "Auto Execute: ON" or "Auto Execute: OFF"
+		autoExecThemeBtn.BackgroundColor3 = autoExecuteEnabled and C.BindActive or C.BindBg
+	end
+	if themeButtonGroups.presets then
+		for themeName, btn in pairs(themeButtonGroups.presets) do
+			btn.BackgroundColor3 = themeName == currentThemeName and C.BindActive or C.BindBg
+			btn.TextColor3 = themeName == currentThemeName and C.TxtWhite or C.TxtMid
+		end
+	end
+	if themeButtonGroups.styles then
+		for styleName, btn in pairs(themeButtonGroups.styles) do
+			btn.BackgroundColor3 = styleName == currentThemeStyle and C.BindActive or C.BindBg
+			btn.TextColor3 = styleName == currentThemeStyle and C.TxtWhite or C.TxtMid
+		end
+	end
+	if themeButtonGroups.sizes and menuSizes and menuSizes[currentSizeIndex] then
+		local currentSizeName = menuSizes[currentSizeIndex].name
+		for sizeName, btn in pairs(themeButtonGroups.sizes) do
+			btn.BackgroundColor3 = sizeName == currentSizeName and C.BindActive or C.BindBg
+			btn.TextColor3 = sizeName == currentSizeName and C.TxtWhite or C.TxtMid
+		end
 	end
 end
 
@@ -8478,6 +8622,7 @@ function applyThemeSize(sizeIndex)
 	if not menuSizes or not menuSizes[sizeIndex] then return false end
 
 	currentSizeIndex = sizeIndex
+	hasCustomSizePreference = true
 	local size = menuSizes[currentSizeIndex]
 	resizeUI(size.width, size.height)
 	if menuSizeBtn then
@@ -8561,7 +8706,7 @@ themeCategory = createCategory(themePage, "Theme")
 themeCard = New("Frame", {
 	BackgroundColor3 = C.BgCard,
 	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 0, 500),
+	Size = UDim2.new(1, 0, 0, 632),
 }, themeCategory)
 Corner(12, themeCard)
 Stroke(C.Divider, 1, themeCard).Transparency = 0.2
@@ -8596,7 +8741,7 @@ themeSizeLabel = New("TextLabel", {
 	TextSize = 12,
 	TextColor3 = C.TxtDim,
 	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "Size: Medium (800x700)",
+	Text = "Size: Padrao (960x600)",
 }, themeCard)
 
 themeStatusLabel = New("TextLabel", {
@@ -8608,7 +8753,7 @@ themeStatusLabel = New("TextLabel", {
 	TextSize = 13,
 	TextColor3 = C.TxtWhite,
 	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "Theme status: ready",
+	Text = "Active theme: ready",
 }, themeCard)
 Corner(8, themeStatusLabel)
 Stroke(C.Divider, 1, themeStatusLabel).Transparency = 0.3
@@ -8619,83 +8764,101 @@ function createThemeButton(parent, buttonText, xScale, yOffset, callback)
 		BackgroundColor3 = C.BindBg,
 		BorderSizePixel = 0,
 		Position = UDim2.new(xScale, 0, 0, yOffset),
-		Size = UDim2.new(0.31, 0, 0, 34),
+		Size = UDim2.new(0.31, 0, 0, 42),
 		Font = Enum.Font.GothamSemibold,
-		TextSize = 12,
-		TextColor3 = C.TxtWhite,
+		TextSize = 13,
+		TextColor3 = C.TxtMid,
 		Text = buttonText,
 		AutoButtonColor = false,
 	}, parent)
 	Corner(8, button)
 	Stroke(C.Divider, 1, button).Transparency = 0.25
+	button.MouseEnter:Connect(function()
+		if button.BackgroundColor3 ~= C.BindActive then
+			UI_Tween(button, {BackgroundColor3 = C.TabHover}, 0.12)
+		end
+	end)
+	button.MouseLeave:Connect(function()
+		updateThemeStatus()
+	end)
 	button.MouseButton1Click:Connect(callback)
 	return button
 end
 
-New("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, 122),
-	Size = UDim2.new(1, 0, 0, 18),
-	Font = Enum.Font.GothamSemibold,
-	TextSize = 13,
-	TextColor3 = C.TxtWhite,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "Color Presets",
-}, themeCard)
-createThemeButton(themeCard, "Purple", 0, 148, function() applyThemePreset("Purple Storm") end)
-createThemeButton(themeCard, "Ocean", 0.345, 148, function() applyThemePreset("Ocean") end)
-createThemeButton(themeCard, "Crimson", 0.69, 148, function() applyThemePreset("Crimson") end)
+function createThemeSection(parent, titleText, descriptionText, yOffset, height)
+	local section = New("Frame", {
+		BackgroundColor3 = C.BgInput,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 0, 0, yOffset),
+		Size = UDim2.new(1, 0, 0, height),
+	}, parent)
+	Corner(10, section)
+	Stroke(C.Divider, 1, section).Transparency = 0.3
 
-New("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, 196),
-	Size = UDim2.new(1, 0, 0, 18),
-	Font = Enum.Font.GothamSemibold,
-	TextSize = 13,
-	TextColor3 = C.TxtWhite,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "Style Presets",
-}, themeCard)
-createThemeButton(themeCard, "Soft", 0, 222, function() applyThemeStyle("Soft") end)
-createThemeButton(themeCard, "Sharp", 0.345, 222, function() applyThemeStyle("Sharp") end)
-createThemeButton(themeCard, "Chunky", 0.69, 222, function() applyThemeStyle("Chunky") end)
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 14, 0, 12),
+		Size = UDim2.new(1, -28, 0, 18),
+		Font = Enum.Font.GothamBold,
+		TextSize = 13,
+		TextColor3 = C.TxtWhite,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = titleText,
+	}, section)
 
-New("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, 270),
-	Size = UDim2.new(1, 0, 0, 18),
-	Font = Enum.Font.GothamSemibold,
-	TextSize = 13,
-	TextColor3 = C.TxtWhite,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "Menu Size",
-}, themeCard)
-createThemeButton(themeCard, "Large", 0, 296, function() applyThemeSize(1) end)
-createThemeButton(themeCard, "Medium", 0.345, 296, function() applyThemeSize(2) end)
-createThemeButton(themeCard, "Small", 0.69, 296, function() applyThemeSize(3) end)
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 14, 0, 32),
+		Size = UDim2.new(1, -28, 0, 16),
+		Font = Enum.Font.Gotham,
+		TextSize = 11,
+		TextColor3 = C.TxtDim,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = descriptionText,
+	}, section)
 
-New("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, 344),
-	Size = UDim2.new(1, 0, 0, 18),
-	Font = Enum.Font.GothamSemibold,
-	TextSize = 13,
-	TextColor3 = C.TxtWhite,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "Auto Execute",
-}, themeCard)
+	return section
+end
+
+themeButtonGroups = {
+	presets = {},
+	styles = {},
+	sizes = {},
+}
+
+themeColorSection = createThemeSection(themeCard, "Color Presets", "Choose the main color palette for the whole menu.", 122, 110)
+themeButtonGroups.presets["Purple Storm"] = createThemeButton(themeColorSection, "Purple Storm", 0.03, 56, function() applyThemePreset("Purple Storm") end)
+themeButtonGroups.presets["Ocean"] = createThemeButton(themeColorSection, "Ocean", 0.345, 56, function() applyThemePreset("Ocean") end)
+themeButtonGroups.presets["Crimson"] = createThemeButton(themeColorSection, "Crimson", 0.66, 56, function() applyThemePreset("Crimson") end)
+
+themeStyleSection = createThemeSection(themeCard, "Style Presets", "Control roundness and the overall shape language.", 246, 110)
+themeButtonGroups.styles["Soft"] = createThemeButton(themeStyleSection, "Soft", 0.03, 56, function() applyThemeStyle("Soft") end)
+themeButtonGroups.styles["Sharp"] = createThemeButton(themeStyleSection, "Sharp", 0.345, 56, function() applyThemeStyle("Sharp") end)
+themeButtonGroups.styles["Chunky"] = createThemeButton(themeStyleSection, "Chunky", 0.66, 56, function() applyThemeStyle("Chunky") end)
+
+themeSizeSection = createThemeSection(themeCard, "Menu Size", "Resize the window without leaving the menu.", 370, 124)
+themeButtonGroups.sizes[menuSizes[1].name] = createThemeButton(themeSizeSection, "Padrao", 0.03, 56, function() applyThemeSize(1) end)
+themeButtonGroups.sizes[menuSizes[2].name] = createThemeButton(themeSizeSection, "Large", 0.265, 56, function() applyThemeSize(2) end)
+themeButtonGroups.sizes[menuSizes[3].name] = createThemeButton(themeSizeSection, "Medium", 0.50, 56, function() applyThemeSize(3) end)
+themeButtonGroups.sizes[menuSizes[4].name] = createThemeButton(themeSizeSection, "Small", 0.735, 56, function() applyThemeSize(4) end)
+themeButtonGroups.sizes[menuSizes[1].name].Size = UDim2.new(0.22, 0, 0, 42)
+themeButtonGroups.sizes[menuSizes[2].name].Size = UDim2.new(0.22, 0, 0, 42)
+themeButtonGroups.sizes[menuSizes[3].name].Size = UDim2.new(0.22, 0, 0, 42)
+themeButtonGroups.sizes[menuSizes[4].name].Size = UDim2.new(0.22, 0, 0, 42)
+
+autoExecSection = createThemeSection(themeCard, "Auto Execute", "Re-run on teleport and write a loader when the executor supports it.", 508, 102)
 
 autoExecThemeBtn = New("TextButton", {
 	BackgroundColor3 = C.BindBg,
 	BorderSizePixel = 0,
-	Position = UDim2.new(0, 0, 0, 370),
-	Size = UDim2.new(1, 0, 0, 34),
+	Position = UDim2.new(0.03, 0, 0, 48),
+	Size = UDim2.new(0.94, 0, 0, 36),
 	Font = Enum.Font.GothamSemibold,
-	TextSize = 12,
+	TextSize = 13,
 	TextColor3 = C.TxtWhite,
 	Text = "Auto Execute: ON",
 	AutoButtonColor = false,
-}, themeCard)
+}, autoExecSection)
 Corner(8, autoExecThemeBtn)
 Stroke(C.Divider, 1, autoExecThemeBtn).Transparency = 0.25
 autoExecThemeBtn.MouseButton1Click:Connect(function()
@@ -8746,13 +8909,16 @@ function applyStoredMenuSettings()
 		if libraryData.settings.autoExecuteEnabled ~= nil then
 			autoExecuteEnabled = libraryData.settings.autoExecuteEnabled and true or false
 		end
+		if libraryData.settings.hasCustomSizePreference ~= nil then
+			hasCustomSizePreference = libraryData.settings.hasCustomSizePreference and true or false
+		end
 		if libraryData.settings.themeName and THEME_PRESETS[libraryData.settings.themeName] then
 			applyThemePreset(libraryData.settings.themeName)
 		end
 		if libraryData.settings.themeStyle and THEME_STYLES[libraryData.settings.themeStyle] then
 			applyThemeStyle(libraryData.settings.themeStyle)
 		end
-		if libraryData.settings.sizeIndex and menuSizes and menuSizes[libraryData.settings.sizeIndex] then
+		if hasCustomSizePreference and libraryData.settings.sizeIndex and menuSizes and menuSizes[libraryData.settings.sizeIndex] then
 			applyThemeSize(libraryData.settings.sizeIndex)
 		end
 	end
