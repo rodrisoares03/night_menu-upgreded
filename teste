@@ -261,16 +261,106 @@ function clearWaypoint()
 	clearWaypointMarker()
 end
 
+function getPromptPart(prompt)
+	local promptParent = prompt and prompt.Parent
+	return promptParent and (promptParent:IsA("BasePart") and promptParent or promptParent:FindFirstAncestorWhichIsA("BasePart"))
+end
+
 function getPromptDistance(prompt)
 	local character = LocalPlayer.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local promptParent = prompt and prompt.Parent
-	local promptPart = promptParent and (promptParent:IsA("BasePart") and promptParent or promptParent:FindFirstAncestorWhichIsA("BasePart"))
+	local promptPart = getPromptPart(prompt)
 	if not root or not promptPart then
 		return math.huge
 	end
 
 	return (promptPart.Position - root.Position).Magnitude
+end
+
+function nudgeToPromptForSteal(prompt)
+	local character = LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local promptPart = getPromptPart(prompt)
+	if not root or not promptPart then
+		return false
+	end
+
+	local targetPos = promptPart.Position + Vector3.new(0, 2.5, 0)
+	root.CFrame = CFrame.new(targetPos)
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	return true
+end
+
+function captureStealReturnPosition()
+	local character = LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return false
+	end
+	stealReturnCFrame = root.CFrame
+	stealReturnPending = true
+	return true
+end
+
+function resetCharacterPoseNoDeath()
+	local character = LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return false
+	end
+
+	-- Re-align to camera yaw and force humanoid out of weird physics/walkback states.
+	local look = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.LookVector or Vector3.new(0, 0, -1)
+	look = Vector3.new(look.X, 0, look.Z)
+	if look.Magnitude < 0.01 then
+		look = Vector3.new(0, 0, -1)
+	else
+		look = look.Unit
+	end
+
+	root.CFrame = CFrame.new(root.Position, root.Position + look)
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	humanoid.AutoRotate = true
+	pcall(function()
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+	end)
+	return true
+end
+
+function returnAfterStealNudge()
+	if not stealReturnPending or not stealReturnCFrame then
+		return false
+	end
+	local character = LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return false
+	end
+	root.CFrame = stealReturnCFrame
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	stealReturnCFrame = nil
+	stealReturnPending = false
+	task.defer(function()
+		pcall(resetCharacterPoseNoDeath)
+	end)
+	return true
+end
+
+function tryStealNudgeWithReturn(prompt)
+	local captured = captureStealReturnPosition()
+	local nudged = nudgeToPromptForSteal(prompt)
+	if nudged then
+		return true
+	end
+	if captured then
+		stealReturnCFrame = nil
+		stealReturnPending = false
+	end
+	return false
 end
 
 function getPromptPriority(prompt)
@@ -291,6 +381,48 @@ function getPromptPriority(prompt)
 	end
 
 	return 1
+end
+
+function getPromptNumericWeight(prompt)
+	local actionText = tostring(prompt and prompt.ActionText or "")
+	local objectText = tostring(prompt and prompt.ObjectText or "")
+	local combined = actionText .. " " .. objectText
+
+	local function parseToken(rawNumber, rawSuffix)
+		local suffix = string.lower(tostring(rawSuffix or ""))
+		local cleaned = tostring(rawNumber or ""):gsub("%s+", ""):gsub(",", "")
+		local numeric = tonumber(cleaned)
+		if not numeric then
+			return nil
+		end
+		if suffix == "k" then
+			numeric = numeric * 1000
+		elseif suffix == "m" then
+			numeric = numeric * 1000000
+		elseif suffix == "b" then
+			numeric = numeric * 1000000000
+		end
+		return numeric
+	end
+
+	local best = 0
+
+	-- Prefer right-side value in current/max patterns (supports suffixes: K/M/B).
+	for _, rightNumber, rightSuffix in combined:gmatch("(%d[%d%.,]*)%s*[kKmMbB]?%s*/%s*(%d[%d%.,]*)%s*([kKmMbB]?)") do
+		local numeric = parseToken(rightNumber, rightSuffix)
+		if numeric and numeric > best then
+			best = numeric
+		end
+	end
+
+	for rawNumber, rawSuffix in combined:gmatch("(%d[%d%.,]*)%s*([kKmMbB]?)") do
+		local numeric = parseToken(rawNumber, rawSuffix)
+		if numeric and numeric > best then
+			best = numeric
+		end
+	end
+
+	return math.floor(best)
 end
 
 function splitPromptFilterList(rawText)
@@ -321,27 +453,211 @@ function promptMatchesFilter(prompt, rawText)
 	return false
 end
 
+function isStealPrompt(prompt)
+	local actionText = string.lower(tostring(prompt and prompt.ActionText or ""))
+	local objectText = string.lower(tostring(prompt and prompt.ObjectText or ""))
+	local combined = actionText .. " " .. objectText
+
+	return combined:find("roubar", 1, true)
+		or combined:find("steal", 1, true)
+		or combined:find("rob", 1, true)
+end
+
+function isShopPrompt(prompt)
+	local actionText = string.lower(tostring(prompt and prompt.ActionText or ""))
+	local objectText = string.lower(tostring(prompt and prompt.ObjectText or ""))
+	local combined = actionText .. " " .. objectText
+
+	return combined:find("shop", 1, true)
+		or combined:find("loja", 1, true)
+		or combined:find("buy", 1, true)
+		or combined:find("compr", 1, true)
+		or combined:find("sell", 1, true)
+		or combined:find("vender", 1, true)
+end
+
+function applyFastStealPrompt(prompt)
+	if not prompt or not prompt:IsA("ProximityPrompt") or not isStealPrompt(prompt) then
+		return
+	end
+
+	if fastStealPromptRestore[prompt] == nil then
+		fastStealPromptRestore[prompt] = prompt.HoldDuration
+	end
+	local originalHold = fastStealPromptRestore[prompt] or 0.5
+	-- Slight speed-up while staying on a safer profile.
+	prompt.HoldDuration = math.clamp(originalHold * 0.85, 0.3, 2.0)
+end
+
+function restoreFastStealPrompts()
+	for prompt, holdDuration in pairs(fastStealPromptRestore) do
+		if prompt and prompt.Parent then
+			pcall(function()
+				prompt.HoldDuration = holdDuration
+			end)
+		end
+		fastStealPromptRestore[prompt] = nil
+	end
+end
+
+function setFastStealEnabled(enabled)
+	fastStealEnabled = enabled and true or false
+
+	if fastStealPromptConnection then
+		fastStealPromptConnection:Disconnect()
+		fastStealPromptConnection = nil
+	end
+
+	if not fastStealEnabled then
+		restoreFastStealPrompts()
+		fastStealLastUseAt = 0
+		fastStealLastPrompt = nil
+		fastStealPerPromptUseAt = {}
+		return
+	end
+
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		applyFastStealPrompt(descendant)
+	end
+
+	fastStealPromptConnection = workspace.DescendantAdded:Connect(function(descendant)
+		applyFastStealPrompt(descendant)
+	end)
+end
+
+function applyStealDistancePrompt(prompt)
+	if not prompt or not prompt:IsA("ProximityPrompt") or not isStealPrompt(prompt) then
+		return
+	end
+
+	if stealDistancePromptRestore[prompt] == nil then
+		stealDistancePromptRestore[prompt] = prompt.MaxActivationDistance
+	end
+
+	local baseDistance = tonumber(prompt.MaxActivationDistance) or 10
+	local desired = math.clamp(tonumber(stealDistanceValue) or 22, 8, 120)
+	if desired > baseDistance then
+		prompt.MaxActivationDistance = desired
+	end
+end
+
+function restoreStealDistancePrompts()
+	for prompt, maxDistance in pairs(stealDistancePromptRestore) do
+		if prompt and prompt.Parent then
+			pcall(function()
+				prompt.MaxActivationDistance = maxDistance
+			end)
+		end
+		stealDistancePromptRestore[prompt] = nil
+	end
+end
+
+function setStealDistanceEnabled(enabled)
+	stealDistanceEnabled = enabled and true or false
+
+	if stealDistancePromptConnection then
+		stealDistancePromptConnection:Disconnect()
+		stealDistancePromptConnection = nil
+	end
+
+	if not stealDistanceEnabled then
+		restoreStealDistancePrompts()
+		return
+	end
+
+	task.spawn(function()
+		local count = 0
+		for _, descendant in ipairs(workspace:GetDescendants()) do
+			applyStealDistancePrompt(descendant)
+			count = count + 1
+			if count % 280 == 0 then
+				task.wait()
+			end
+		end
+	end)
+
+	stealDistancePromptConnection = workspace.DescendantAdded:Connect(function(descendant)
+		applyStealDistancePrompt(descendant)
+	end)
+end
+
+function setStealDistanceValue(newValue)
+	local parsed = tonumber(newValue)
+	if not parsed then
+		return false
+	end
+	parsed = math.clamp(math.floor(parsed), 8, 300)
+	stealDistanceValue = parsed
+	if stealDistanceEnabled then
+		task.spawn(function()
+			local count = 0
+			for _, descendant in ipairs(workspace:GetDescendants()) do
+				applyStealDistancePrompt(descendant)
+				count = count + 1
+				if count % 280 == 0 then
+					task.wait()
+				end
+			end
+		end)
+	end
+	return true
+end
+
+CONFIG_TOGGLE_KEY_ALIASES = {
+	distance_esp = "distance_m",
+	distanceesp = "distance_m",
+	show_distance = "distance_m",
+	antikick = "anti_kick",
+	anti_kick_toggle = "anti_kick",
+	antiragdoll = "anti_ragdoll",
+	anti_ragdoll_toggle = "anti_ragdoll",
+	faststeal = "fast_steal",
+	steal_fast = "fast_steal",
+}
+
 function isPromptInteractable(prompt)
 	if not prompt or not prompt.Parent or not prompt.Enabled then return false end
-	if getPromptDistance(prompt) > ((prompt.MaxActivationDistance or 10) + 1.5) then return false end
+	local allowedDistance = (prompt.MaxActivationDistance or 10) + 1.5
+	if stealDistanceEnabled and isStealPrompt(prompt) then
+		local requested = tonumber(stealDistanceValue) or 22
+		local capped = math.min(requested, tonumber(stealDistanceSafeLimit) or 16)
+		allowedDistance = math.max(allowedDistance, capped + 1.5)
+	end
+	if getPromptDistance(prompt) > allowedDistance then return false end
+	if instantInteractBlockShopsEnabled and isShopPrompt(prompt) then return false end
 	if instantInteractBlacklistText ~= "" and promptMatchesFilter(prompt, instantInteractBlacklistText) then return false end
 	if instantInteractWhitelistText ~= "" and not promptMatchesFilter(prompt, instantInteractWhitelistText) then return false end
 	return true
 end
 
 function getBestInstantInteractPrompt()
+	if stealFocusPrompt and (not isPromptInteractable(stealFocusPrompt) or not isInstantPromptVisible(stealFocusPrompt)) then
+		stealFocusPrompt = nil
+	end
+
 	local bestPrompt = nil
 	local bestPriority = -1
+	local bestNumeric = -1
 	local bestDistance = math.huge
 
 	for prompt in pairs(instantInteractVisiblePrompts) do
 		if isPromptInteractable(prompt) then
 			local priority = getPromptPriority(prompt)
+			local numeric = getPromptNumericWeight(prompt)
+			local isSteal = isStealPrompt(prompt)
 			local distance = getPromptDistance(prompt)
-			if priority > bestPriority or (priority == bestPriority and distance < bestDistance) then
-				bestPrompt = prompt
-				bestPriority = priority
-				bestDistance = distance
+
+			-- For steal prompts, only target values >= configured minimum (default: 20k).
+			if (not isSteal) or (numeric >= (tonumber(stealMinTargetValue) or 20000)) then
+				if priority > bestPriority
+					or (priority == bestPriority and prompt == stealFocusPrompt and bestPrompt ~= stealFocusPrompt)
+					or (priority == bestPriority and numeric > bestNumeric)
+					or (priority == bestPriority and numeric == bestNumeric and distance < bestDistance) then
+					bestPrompt = prompt
+					bestPriority = priority
+					bestNumeric = numeric
+					bestDistance = distance
+				end
 			end
 		else
 			instantInteractVisiblePrompts[prompt] = nil
@@ -351,17 +667,50 @@ function getBestInstantInteractPrompt()
 	return bestPrompt
 end
 
+function isInstantPromptVisible(prompt)
+	return prompt and instantInteractVisiblePrompts[prompt] == true and prompt.Parent and prompt.Enabled
+end
+
 function triggerPromptInteraction(prompt)
 	if not prompt or not prompt.Parent or not prompt.Enabled then return false end
 
 	local holdDuration = math.max(prompt.HoldDuration or 0, 0.05)
-	local releaseDelay = holdDuration + 0.35
+	local isSteal = isStealPrompt(prompt)
+	local releaseAt
+	local didStealNudge = false
+	local canStealNudge = isSteal and not stealTpUsedForPrompt[prompt]
+	if isSteal then
+		-- Extra margin for steal prompts so server-side validation has time to complete.
+		releaseAt = tick() + math.max(holdDuration, 0.45) + 0.45
+	else
+		releaseAt = tick() + holdDuration + 0.2
+	end
 	if prompt.InputHoldBegin and prompt.InputHoldEnd then
 		local ok = pcall(function()
+			if canStealNudge and stealDistanceEnabled and not didStealNudge and getPromptDistance(prompt) > 6 then
+				didStealNudge = tryStealNudgeWithReturn(prompt)
+				if didStealNudge then
+					stealTpUsedForPrompt[prompt] = true
+					stealFocusPrompt = prompt
+				end
+			end
 			prompt:InputHoldBegin()
-			task.wait(releaseDelay)
-			if prompt.Parent and prompt.Enabled then
-				task.wait(0.2)
+			while tick() < releaseAt do
+				if not instantInteractEnabled or not isInstantPromptVisible(prompt) then
+					break
+				end
+				if canStealNudge and stealDistanceEnabled and not didStealNudge and (releaseAt - tick()) <= 0.22 then
+					if getPromptDistance(prompt) > 7 then
+						didStealNudge = tryStealNudgeWithReturn(prompt)
+						if didStealNudge then
+							stealTpUsedForPrompt[prompt] = true
+							stealFocusPrompt = prompt
+						end
+					else
+						didStealNudge = true
+					end
+				end
+				task.wait(0.03)
 			end
 			prompt:InputHoldEnd()
 		end)
@@ -373,10 +722,30 @@ function triggerPromptInteraction(prompt)
 	local keyCode = prompt.KeyboardKeyCode
 	if keyCode and keyCode ~= Enum.KeyCode.Unknown then
 		local ok = pcall(function()
+			if canStealNudge and stealDistanceEnabled and not didStealNudge and getPromptDistance(prompt) > 6 then
+				didStealNudge = tryStealNudgeWithReturn(prompt)
+				if didStealNudge then
+					stealTpUsedForPrompt[prompt] = true
+					stealFocusPrompt = prompt
+				end
+			end
 			VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-			task.wait(releaseDelay)
-			if prompt.Parent and prompt.Enabled then
-				task.wait(0.2)
+			while tick() < releaseAt do
+				if not instantInteractEnabled or not isInstantPromptVisible(prompt) then
+					break
+				end
+				if canStealNudge and stealDistanceEnabled and not didStealNudge and (releaseAt - tick()) <= 0.22 then
+					if getPromptDistance(prompt) > 7 then
+						didStealNudge = tryStealNudgeWithReturn(prompt)
+						if didStealNudge then
+							stealTpUsedForPrompt[prompt] = true
+							stealFocusPrompt = prompt
+						end
+					else
+						didStealNudge = true
+					end
+				end
+				task.wait(0.03)
 			end
 			VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
 		end)
@@ -400,13 +769,61 @@ end
 function tryInstantInteractPrompt(prompt)
 	if not instantInteractEnabled or instantInteractBusy then return end
 	if not isPromptInteractable(prompt) then return end
+	if prompt == instantInteractLastPrompt and (tick() - instantInteractLastTryAt) < 0.03 then return end
+
+	local now = tick()
+	local isSteal = isStealPrompt(prompt)
+	if isSteal and (now - stealLastCompleteAt) < stealInteractionCooldown then
+		return
+	end
+	if fastStealEnabled and isSteal then
+		local lastForPrompt = fastStealPerPromptUseAt[prompt] or 0
+		if now - fastStealLastUseAt < fastStealGlobalCooldown then
+			return
+		end
+		if now - lastForPrompt < fastStealSamePromptCooldown then
+			return
+		end
+		if fastStealLastPrompt and fastStealLastPrompt ~= prompt and (now - fastStealLastUseAt) < fastStealSwitchCooldown then
+			return
+		end
+	end
 
 	instantInteractBusy = true
+	instantInteractLastPrompt = prompt
+	instantInteractLastTryAt = now
 	task.spawn(function()
+		local interacted = false
 		pcall(function()
-			triggerPromptInteraction(prompt)
+			interacted = triggerPromptInteraction(prompt) and true or false
 		end)
-		task.wait(math.max((prompt and prompt.HoldDuration or 0) + 0.1, 0.15))
+		if interacted and isSteal and not isInstantPromptVisible(prompt) then
+			stealLastCompleteAt = tick()
+			stealTpUsedForPrompt[prompt] = nil
+			if stealFocusPrompt == prompt then
+				stealFocusPrompt = nil
+			end
+		end
+		if interacted and fastStealEnabled and isSteal then
+			-- Only apply strict steal cooldown after prompt actually closes.
+			if not isInstantPromptVisible(prompt) then
+				local usedAt = tick()
+				fastStealLastUseAt = usedAt
+				fastStealLastPrompt = prompt
+				fastStealPerPromptUseAt[prompt] = usedAt
+			else
+				-- If server didn't confirm, back off a bit to avoid infinite hold spam.
+				fastStealPerPromptUseAt[prompt] = tick()
+			end
+		end
+		if isSteal and stealReturnPending then
+			task.delay(0.12, function()
+				pcall(function()
+					returnAfterStealNudge()
+				end)
+			end)
+		end
+		task.wait(0.03)
 		instantInteractBusy = false
 	end)
 end
@@ -505,6 +922,31 @@ instantInteractBusy = false
 instantInteractVisiblePrompts = {}
 instantInteractWhitelistText = ""
 instantInteractBlacklistText = "shop,loja,buy,comprar,sell,vender"
+instantInteractDefaultShopBlacklist = "shop,loja,buy,comprar,sell,vender"
+instantInteractLastPrompt = nil
+instantInteractLastTryAt = 0
+fastStealEnabled = false
+fastStealPromptRestore = {}
+fastStealPromptConnection = nil
+fastStealLastUseAt = 0
+fastStealLastPrompt = nil
+fastStealPerPromptUseAt = {}
+fastStealGlobalCooldown = 1.6
+fastStealSwitchCooldown = 2.1
+fastStealSamePromptCooldown = 1.2
+stealDistanceEnabled = false
+stealDistanceValue = 22
+stealDistancePromptRestore = {}
+stealDistancePromptConnection = nil
+stealDistanceSafeLimit = 16
+stealInteractionCooldown = 6
+stealLastCompleteAt = 0
+stealTpUsedForPrompt = {}
+stealMinTargetValue = 20000
+stealFocusPrompt = nil
+stealReturnCFrame = nil
+stealReturnPending = false
+instantInteractBlockShopsEnabled = true
 
 highlights = {}         -- [Character] = Highlight
 overlays = {}           -- [Character] = BillboardGui
@@ -3622,12 +4064,13 @@ function setTab(tabName)
 		end)
 	end
 end
-local updatesPage = createPage("UPDATES")
-local playersPage = createPage("PLAYERS")
-local espPage = createPage("ESP")
-local aimbotPage = createPage("AIMBOT")
-local utilPage = createPage("UTIL")
-local infoPage = createPage("INFO")
+updatesPage = createPage("UPDATES")
+playersPage = createPage("PLAYERS")
+espPage = createPage("ESP")
+aimbotPage = createPage("AIMBOT")
+teleportsPage = createPage("TELEPORTS")
+utilPage = createPage("UTIL")
+infoPage = createPage("INFO")
 configPage = createPage("CONFIG")
 themePage = createPage("THEME")
 for _, child in ipairs(utilPage:GetChildren()) do
@@ -3974,10 +4417,11 @@ createTab("UPDATES", "Updates", "", 1)
 createTab("PLAYERS", "Players", "", 2)
 createTab("ESP", "ESP", "", 3)
 createTab("AIMBOT", "RAGE", "", 4)
-createTab("UTIL", "Misc", "", 5)
-createTab("INFO", "Info", "", 6)
-createTab("CONFIG", "Config", "", 7)
-createTab("THEME", "Theme", "", 8)
+createTab("TELEPORTS", "Teleports", "", 5)
+createTab("UTIL", "Misc", "", 6)
+createTab("INFO", "Info", "", 7)
+createTab("CONFIG", "Config", "", 8)
+createTab("THEME", "Theme", "", 9)
 
 setTab("UPDATES")
 
@@ -3986,9 +4430,9 @@ panelVisible = true
 mainFrame.Visible = true
 
 -- Drag pela Topbar
-local dragging = false
-local dragStart = nil
-local startPos = nil
+dragging = false
+dragStart = nil
+startPos = nil
 header.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = true
@@ -4008,7 +4452,7 @@ end)
 
 
 
-local categoryLayoutOrder = 0
+categoryLayoutOrder = 0
 -- Categoria com espaÃ§amento adequado
 function createCategory(parent, titleText)
 	categoryLayoutOrder = categoryLayoutOrder + 1
@@ -4247,6 +4691,167 @@ function createConfigActionButton(parent, buttonText, xScale, yOffset, widthScal
 	return button
 end
 
+function createTeleportActionButton(parent, buttonText, position, size, callback)
+	local button = New("TextButton", {
+		BackgroundColor3 = C.BindBg,
+		BorderSizePixel = 0,
+		Position = position,
+		Size = size,
+		Font = Enum.Font.GothamSemibold,
+		TextSize = 13,
+		TextColor3 = C.TxtWhite,
+		Text = buttonText,
+		AutoButtonColor = false,
+	}, parent)
+	Corner(10, button)
+	Stroke(C.Divider, 1, button).Transparency = 0.22
+	button.MouseEnter:Connect(function()
+		UI_Tween(button, {BackgroundColor3 = C.TabHover}, 0.12)
+	end)
+	button.MouseLeave:Connect(function()
+		UI_Tween(button, {BackgroundColor3 = C.BindBg}, 0.12)
+	end)
+	button.MouseButton1Click:Connect(callback)
+	return button
+end
+
+function createTeleportPanel(parent, titleText, descriptionText, xScale, yOffset, height)
+	local panel = New("Frame", {
+		BackgroundColor3 = C.BgCard,
+		BorderSizePixel = 0,
+		Position = UDim2.new(xScale, 0, 0, yOffset),
+		Size = UDim2.new(0.485, 0, 0, height),
+	}, parent)
+	Corner(12, panel)
+	Stroke(C.Divider, 1, panel).Transparency = 0.22
+
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 16, 0, 14),
+		Size = UDim2.new(1, -32, 0, 20),
+		Font = Enum.Font.GothamBold,
+		TextSize = 15,
+		TextColor3 = C.TxtWhite,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = titleText,
+	}, panel)
+
+	New("TextLabel", {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 16, 0, 38),
+		Size = UDim2.new(1, -32, 0, 30),
+		Font = Enum.Font.Gotham,
+		TextSize = 11,
+		TextColor3 = C.TxtDim,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = descriptionText,
+	}, panel)
+
+	return panel
+end
+
+function createTeleportBindCard(parent, titleText, descriptionText, xScale, yOffset, bindId, getBindValue, getBindName, setBindFn)
+	local panel = createTeleportPanel(parent, titleText, descriptionText, xScale, yOffset, 116)
+
+	local bindTag = New("TextLabel", {
+		Name = "BindTag",
+		BackgroundColor3 = C.BindBg,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 16, 1, -42),
+		Size = UDim2.new(0, 58, 0, 26),
+		Font = Enum.Font.GothamSemibold,
+		Text = "--",
+		TextColor3 = C.TxtMid,
+		TextSize = 11,
+	}, panel)
+	Corner(8, bindTag)
+	Stroke(C.Divider, 1, bindTag).Transparency = 0.2
+
+	local gearBtn = New("TextButton", {
+		BackgroundColor3 = C.BindBg,
+		BorderSizePixel = 0,
+		Position = UDim2.new(1, -46, 1, -46),
+		Size = UDim2.new(0, 30, 0, 30),
+		Font = Enum.Font.GothamBold,
+		Text = "⚙",
+		TextColor3 = C.TxtMid,
+		TextSize = 18,
+		AutoButtonColor = false,
+	}, panel)
+	Corner(8, gearBtn)
+	Stroke(C.Divider, 1, gearBtn).Transparency = 0.2
+
+	local bindHint = New("TextLabel", {
+		Name = "BindHint",
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.08,
+		Position = UDim2.new(0, 0, 0, 0),
+		Size = UDim2.new(0, 235, 0, 26),
+		Font = Enum.Font.Gotham,
+		Text = "",
+		TextColor3 = Color3.fromRGB(242, 242, 246),
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		Visible = false,
+		ZIndex = 10000031,
+	}, gui)
+	Corner(6, bindHint)
+	local bindHintStroke = Stroke(Color3.fromRGB(32, 28, 40), 1, bindHint)
+	bindHintStroke.Transparency = 0.2
+	bindHintStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+	local function refreshBindTag()
+		local shown = getBindName and getBindName() or "None"
+		if not shown or shown == "" or shown == "None" then
+			bindTag.Text = "--"
+			bindTag.TextColor3 = C.TxtDim
+		else
+			if #shown > 7 then
+				shown = shown:sub(1, 7)
+			end
+			bindTag.Text = shown
+			bindTag.TextColor3 = C.TxtWhite
+		end
+	end
+
+	gearBtn.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton2 then
+			return
+		end
+		hideAllBindHints()
+		local gearPos = gearBtn.AbsolutePosition
+		local gearSize = gearBtn.AbsoluteSize
+		bindHint.Text = "Press a key/button for " .. titleText .. " | Esc clears"
+		bindHint.Position = UDim2.new(0, gearPos.X - 184, 0, gearPos.Y + gearSize.Y + 8)
+		bindHint.Visible = true
+		activeBindHints[bindHint] = true
+		activeBindCapture = {
+			bindId = bindId,
+			hint = bindHint,
+			gear = gearBtn,
+			setBind = setBindFn,
+			waitingForNextInput = true,
+			refreshBindTag = refreshBindTag,
+		}
+		gearBtn.TextColor3 = C.PurpleGlow
+		bindTag.BackgroundColor3 = C.BindActive
+	end)
+
+	registerConfigBind(bindId, {
+		getBindValue = getBindValue,
+		getBindName = getBindName,
+		setBind = setBindFn,
+		refreshBindTag = refreshBindTag,
+		label = titleText,
+	})
+
+	refreshBindTag()
+	return panel, refreshBindTag
+end
+
 -- Nova Helper para auto-size das Subcategorias feitas manualmente
 function bindAutoSize(frame, layout)
 	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -4447,12 +5052,14 @@ function createToggle(parent, text, callback, tooltipText, options)
 	end
 
 	local function setState(newState, invokeCallback)
-		if state == newState then
+		local forceCallback = invokeCallback == "force"
+		local shouldInvoke = invokeCallback == true or forceCallback
+		if state == newState and not forceCallback then
 			return
 		end
 		state = newState
 		applyToggleVisuals(true)
-		if invokeCallback and callback then
+		if shouldInvoke and callback then
 			callback(state)
 		end
 	end
@@ -5144,7 +5751,6 @@ espVisualLayout.Parent = espVisualContent
 
 espToggle = createToggle(espVisualContent, "Esp", function(enabled)
 	espEnabled = enabled
-	saveConfig()
 	if not enabled then
 		clearAllESPVisuals()
 	end
@@ -5663,7 +6269,6 @@ togglesFrame.Parent = aimbotConfigContent
 
 local aimbotToggle = createToggle(togglesFrame, "Aimbot", function(enabled)
 	aimbotEnabled = enabled
-	saveConfig()
 end, "Locks aim onto the closest target on screen.", {
 	bindId = "aimbot",
 	getBindValue = function() return aimbotBind end,
@@ -7120,7 +7725,6 @@ boostsLayout.Parent = boostsContent
 
 speedToggle = createToggle(boostsContent, "Speed Boost", function(enabled)
 	speedBoostEnabled = enabled
-	saveConfig()
 	local character = LocalPlayer.Character
 	if character then
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -7137,7 +7741,6 @@ end, "Raises normal Roblox movement speed.")
 
 jumpToggle = createToggle(boostsContent, "Jump Boost", function(enabled)
 	jumpPowerBoostEnabled = enabled
-	saveConfig()
 	local character = LocalPlayer.Character
 	if character then
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -7371,9 +7974,20 @@ instantInteractToggle = createToggle(utilsContent, "Instant Interact", function(
 
 		instantInteractConnection = ProximityPromptService.PromptShown:Connect(function(prompt)
 			instantInteractVisiblePrompts[prompt] = true
+			instantInteractLastPrompt = nil
+			instantInteractLastTryAt = 0
 		end)
 		instantInteractHiddenConnection = ProximityPromptService.PromptHidden:Connect(function(prompt)
 			instantInteractVisiblePrompts[prompt] = nil
+			stealTpUsedForPrompt[prompt] = nil
+			if stealFocusPrompt == prompt then
+				stealFocusPrompt = nil
+			end
+			if prompt == instantInteractLastPrompt then
+				instantInteractBusy = false
+				instantInteractLastPrompt = nil
+				instantInteractLastTryAt = 0
+			end
 		end)
 
 		task.spawn(function()
@@ -7400,6 +8014,11 @@ instantInteractToggle = createToggle(utilsContent, "Instant Interact", function(
 		if instantInteractLoop then instantInteractLoop:Disconnect() instantInteractLoop = nil end
 		instantInteractVisiblePrompts = {}
 		instantInteractBusy = false
+		instantInteractLastPrompt = nil
+		instantInteractLastTryAt = 0
+		stealFocusPrompt = nil
+		stealReturnCFrame = nil
+		stealReturnPending = false
 	end
 end, "Targets the best nearby ProximityPrompt, prioritizes Roubar/Collect-style prompts, and handles hold or click automatically.")
 
@@ -7436,6 +8055,39 @@ Stroke(C.Divider, 1, instantInteractBlacklistInput).Transparency = 0.25
 instantInteractBlacklistInput:GetPropertyChangedSignal("Text"):Connect(function()
 	instantInteractBlacklistText = instantInteractBlacklistInput.Text or ""
 end)
+
+instantInteractBlockShopsBtn = Instance.new("TextButton")
+instantInteractBlockShopsBtn.Size = UDim2.new(1, 0, 0, 36)
+instantInteractBlockShopsBtn.BackgroundColor3 = C.BindActive
+instantInteractBlockShopsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+instantInteractBlockShopsBtn.Font = Enum.Font.GothamSemibold
+instantInteractBlockShopsBtn.TextSize = 12
+instantInteractBlockShopsBtn.Text = "Block Shops: ON"
+instantInteractBlockShopsBtn.Parent = utilsContent
+Instance.new("UICorner", instantInteractBlockShopsBtn).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, instantInteractBlockShopsBtn).Transparency = 0.25
+
+function syncInstantInteractBlockShopsButton()
+	if not instantInteractBlockShopsBtn then return end
+	local enabled = instantInteractBlockShopsEnabled
+	instantInteractBlockShopsBtn.Text = enabled and "Block Shops: ON" or "Block Shops: OFF"
+	instantInteractBlockShopsBtn.BackgroundColor3 = enabled and C.BindActive or C.BindBg
+end
+
+instantInteractBlacklistInput:GetPropertyChangedSignal("Text"):Connect(function()
+	syncInstantInteractBlockShopsButton()
+end)
+
+instantInteractBlockShopsBtn.MouseButton1Click:Connect(function()
+	instantInteractBlockShopsEnabled = not instantInteractBlockShopsEnabled
+	if instantInteractBlockShopsEnabled then
+		instantInteractBlacklistText = instantInteractDefaultShopBlacklist
+	end
+	instantInteractBlacklistInput.Text = instantInteractBlacklistText
+	syncInstantInteractBlockShopsButton()
+end)
+
+syncInstantInteractBlockShopsButton()
 
 kickPushToggle = createToggle(utilsContent, "Kick Push Player", function(enabled)
 	toggleKickPush(enabled)
@@ -7476,147 +8128,216 @@ toggleBindActions["kickPush"] = function()
 	end)
 end
 
--- TP para Cursor com Bind
-waypointSaveBtn = Instance.new("TextButton")
-waypointSaveBtn.Size = UDim2.new(1, 0, 0, 45)
-waypointSaveBtn.BackgroundColor3 = C.BindBg
-waypointSaveBtn.BackgroundTransparency = 0
-waypointSaveBtn.Text = "Save Waypoint"
-waypointSaveBtn.Font = Enum.Font.Gotham
-waypointSaveBtn.TextSize = 13
-waypointSaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-waypointSaveBtn.BorderSizePixel = 0
-waypointSaveBtn.Parent = utilsContent
-Instance.new("UICorner", waypointSaveBtn).CornerRadius = UDim.new(0, 8)
-Stroke(C.Divider, 1, waypointSaveBtn).Transparency = 0.25
+fastStealToggle = createToggle(utilsContent, "Fast Steal", function(enabled)
+	setFastStealEnabled(enabled)
+end, "Makes Roubar/Steal prompts use almost no hold time.", {
+	configKey = "fast_steal",
+})
 
-waypointSaveBtn.MouseButton1Click:Connect(function()
-	if saveCurrentWaypoint() then
-		waypointSaveBtn.Text = "Save Waypoint: OK"
+stealDistanceToggle = createToggle(utilsContent, "Steal Distance", function(enabled)
+	setStealDistanceEnabled(enabled)
+end, "Extends steal prompt range for Instant Interact.")
+
+stealDistanceFrame = Instance.new("Frame")
+stealDistanceFrame.Size = UDim2.new(1, 0, 0, 36)
+stealDistanceFrame.BackgroundTransparency = 1
+stealDistanceFrame.Parent = utilsContent
+
+stealDistanceLabel = Instance.new("TextLabel")
+stealDistanceLabel.Size = UDim2.new(0.58, 0, 1, 0)
+stealDistanceLabel.BackgroundTransparency = 1
+stealDistanceLabel.Text = "Steal Distance: " .. tostring(stealDistanceValue)
+stealDistanceLabel.Font = Enum.Font.GothamSemibold
+stealDistanceLabel.TextSize = 12
+stealDistanceLabel.TextColor3 = C.TxtWhite
+stealDistanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+stealDistanceLabel.Parent = stealDistanceFrame
+
+stealDistanceInput = Instance.new("TextBox")
+stealDistanceInput.Size = UDim2.new(0.42, -4, 0, 32)
+stealDistanceInput.Position = UDim2.new(0.58, 4, 0, 2)
+stealDistanceInput.BackgroundColor3 = C.BgInput
+stealDistanceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+stealDistanceInput.PlaceholderColor3 = C.TxtDim
+stealDistanceInput.PlaceholderText = "8-300"
+stealDistanceInput.Text = tostring(stealDistanceValue)
+stealDistanceInput.Font = Enum.Font.Gotham
+stealDistanceInput.TextSize = 12
+stealDistanceInput.ClearTextOnFocus = false
+stealDistanceInput.Parent = stealDistanceFrame
+Instance.new("UICorner", stealDistanceInput).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, stealDistanceInput).Transparency = 0.25
+
+stealDistanceInput.FocusLost:Connect(function()
+	if setStealDistanceValue(stealDistanceInput.Text) then
+		stealDistanceInput.Text = tostring(stealDistanceValue)
+		stealDistanceLabel.Text = "Steal Distance: " .. tostring(stealDistanceValue)
 	else
-		waypointSaveBtn.Text = "Save Waypoint: Failed"
+		stealDistanceInput.Text = tostring(stealDistanceValue)
 	end
-	task.delay(1.25, function()
+end)
+
+teleportsCategory = createCategory(teleportsPage, "Teleports")
+
+teleportsBoard = New("Frame", {
+	BackgroundColor3 = C.BgInput,
+	BorderSizePixel = 0,
+	Size = UDim2.new(1, 0, 0, 372),
+}, teleportsCategory)
+Corner(12, teleportsBoard)
+Stroke(C.Divider, 1, teleportsBoard).Transparency = 0.2
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 16, 0, 14),
+	Size = UDim2.new(1, -32, 0, 22),
+	Font = Enum.Font.GothamBold,
+	TextSize = 17,
+	TextColor3 = C.TxtWhite,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Teleport Tools",
+}, teleportsBoard)
+
+New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 16, 0, 38),
+	Size = UDim2.new(1, -32, 0, 18),
+	Font = Enum.Font.Gotham,
+	TextSize = 11,
+	TextColor3 = C.TxtDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Waypoint and TP Cursor are now grouped here with a cleaner layout and bind gears.",
+}, teleportsBoard)
+
+waypointPanel = createTeleportPanel(teleportsBoard, "Waypoint", "Save your current position, clear it, or jump back to it instantly.", 0.02, 72, 152)
+
+waypointStatusLabel = New("TextLabel", {
+	BackgroundTransparency = 1,
+	Position = UDim2.new(0, 16, 0, 72),
+	Size = UDim2.new(1, -32, 0, 18),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 12,
+	TextColor3 = C.PurpleGlow,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Waypoint: none saved",
+}, waypointPanel)
+
+function refreshWaypointStatus()
+	if waypointStatusLabel then
+		waypointStatusLabel.Text = waypointPosition and "Waypoint: saved" or "Waypoint: none saved"
+	end
+end
+
+waypointSaveBtn = createTeleportActionButton(waypointPanel, "Save Waypoint", UDim2.new(0, 16, 0, 100), UDim2.new(0.46, 0, 0, 36), function()
+	if saveCurrentWaypoint() then
+		refreshWaypointStatus()
+		waypointSaveBtn.Text = "Saved"
+	else
+		waypointSaveBtn.Text = "Failed"
+	end
+	task.delay(1, function()
 		if waypointSaveBtn and waypointSaveBtn.Parent then
 			waypointSaveBtn.Text = "Save Waypoint"
 		end
 	end)
 end)
 
-waypointClearBtn = Instance.new("TextButton")
-waypointClearBtn.Size = UDim2.new(1, 0, 0, 45)
-waypointClearBtn.BackgroundColor3 = C.BindBg
-waypointClearBtn.BackgroundTransparency = 0
-waypointClearBtn.Text = "Clear Waypoint"
-waypointClearBtn.Font = Enum.Font.Gotham
-waypointClearBtn.TextSize = 13
-waypointClearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-waypointClearBtn.BorderSizePixel = 0
-waypointClearBtn.Parent = utilsContent
-Instance.new("UICorner", waypointClearBtn).CornerRadius = UDim.new(0, 8)
-Stroke(C.Divider, 1, waypointClearBtn).Transparency = 0.25
-
-waypointClearBtn.MouseButton1Click:Connect(function()
+waypointClearBtn = createTeleportActionButton(waypointPanel, "Clear Waypoint", UDim2.new(0.54, 0, 0, 100), UDim2.new(0.46, 0, 0, 36), function()
 	clearWaypoint()
-end)
-
-waypointBindBtn = Instance.new("TextButton")
-waypointBindBtn.Size = UDim2.new(1, 0, 0, 45)
-waypointBindBtn.BackgroundColor3 = C.BindBg
-waypointBindBtn.BackgroundTransparency = 0
-waypointBindBtn.Text = "Waypoint TP Bind: " .. waypointBindString
-waypointBindBtn.Font = Enum.Font.SourceSans
-waypointBindBtn.TextSize = 14
-waypointBindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-waypointBindBtn.Parent = utilsContent
-Instance.new("UICorner", waypointBindBtn).CornerRadius = UDim.new(0, 8)
-Stroke(C.Divider, 1, waypointBindBtn).Transparency = 0.25
-
-function setWaypointBind(bindValue, bindName)
-	waypointBind = bindValue
-	waypointBindString = bindName
-	waypointBindBtn.Text = "Waypoint TP Bind: " .. bindDisplayName(bindValue, bindName)
-	waypointBindBtn.BackgroundColor3 = C.BindBg
-	waypointBindListening = false
-end
-
-registerConfigBind("waypoint_tp", {
-	getBindValue = function() return waypointBind end,
-	getBindName = function() return waypointBindString end,
-	setBind = function(bindValue, bindName)
-		setWaypointBind(bindValue, bindName or bindDisplayName(bindValue, bindName))
-	end,
-	label = "Waypoint TP Bind",
-})
-
-waypointBindListening = false
-waypointBindBtn.MouseButton1Click:Connect(function()
-	waypointBindListening = true
-	waypointBindBtn.Text = "Press a key or mouse button..."
-	waypointBindBtn.BackgroundColor3 = C.BindActive
-end)
-
-UserInputService.InputBegan:Connect(function(input, processed)
-	if waypointBindListening then
-		local bindValue, bindName = getBindableInput(input)
-		if not bindValue then
-			return
-		end
-		setWaypointBind(bindValue, bindName)
-		return
-	end
+	refreshWaypointStatus()
 end)
 
 tpToCursorBind = nil
 tpToCursorBindString = "None"
 tpCursorCooldown = 0
 
-tpCursorBindBtn = Instance.new("TextButton")
-tpCursorBindBtn.Size = UDim2.new(1, 0, 0, 45)
-tpCursorBindBtn.BackgroundColor3 = C.BindBg
-tpCursorBindBtn.BackgroundTransparency = 0
-tpCursorBindBtn.Text = "TP Cursor Bind: " .. tpToCursorBindString
-tpCursorBindBtn.Font = Enum.Font.SourceSans
-tpCursorBindBtn.TextSize = 14
-tpCursorBindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-tpCursorBindBtn.Parent = utilsContent
-Instance.new("UICorner", tpCursorBindBtn).CornerRadius = UDim.new(0, 8)
-Stroke(C.Divider, 1, tpCursorBindBtn).Transparency = 0.25
+function teleportToCursorNow()
+	local currentTime = tick()
+	if currentTime - tpCursorCooldown < 3 then
+		return false
+	end
+
+	local mouse = LocalPlayer:GetMouse()
+	local character = LocalPlayer.Character
+	if character and mouse.Hit then
+		local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+		if humanoidRootPart then
+			local targetPos = mouse.Hit.Position + Vector3.new(0, 3, 0)
+			local direction = (targetPos - humanoidRootPart.Position)
+			local rayParams = RaycastParams.new()
+			rayParams.FilterDescendantsInstances = {character}
+			rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+			local rayResult = workspace:Raycast(humanoidRootPart.Position, direction, rayParams)
+			if rayResult then
+				return false
+			end
+
+			humanoidRootPart.CFrame = CFrame.new(targetPos)
+			tpCursorCooldown = currentTime
+			return true
+		end
+	end
+
+	return false
+end
+
+waypointBindRefresh = nil
+tpCursorBindRefresh = nil
+
+function setWaypointBind(bindValue, bindName)
+	waypointBind = bindValue
+	waypointBindString = bindDisplayName(bindValue, bindName)
+	if waypointBindRefresh then
+		waypointBindRefresh()
+	end
+end
 
 function setTPCursorBind(bindValue, bindName)
 	tpToCursorBind = bindValue
-	tpToCursorBindString = bindName
-	tpCursorBindBtn.Text = "TP Cursor Bind: " .. bindDisplayName(bindValue, bindName)
-	tpCursorBindBtn.BackgroundColor3 = C.BindBg
-	tpCursorBindListening = false
+	tpToCursorBindString = bindDisplayName(bindValue, bindName)
+	if tpCursorBindRefresh then
+		tpCursorBindRefresh()
+	end
 end
 
-registerConfigBind("tp_cursor", {
-	getBindValue = function() return tpToCursorBind end,
-	getBindName = function() return tpToCursorBindString end,
-	setBind = function(bindValue, bindName)
-		setTPCursorBind(bindValue, bindName or bindDisplayName(bindValue, bindName))
-	end,
-	label = "TP Cursor Bind",
-})
-
-tpCursorBindListening = false
-tpCursorBindBtn.MouseButton1Click:Connect(function()
-	tpCursorBindListening = true
-	tpCursorBindBtn.Text = "Press a key or mouse button..."
-	tpCursorBindBtn.BackgroundColor3 = C.BindActive
-end)
-
-UserInputService.InputBegan:Connect(function(input, processed)
-	if tpCursorBindListening then
-		local bindValue, bindName = getBindableInput(input)
-		if not bindValue then
-			return
-		end
-		setTPCursorBind(bindValue, bindName)
-		return
+_, waypointBindRefresh = createTeleportBindCard(
+	teleportsBoard,
+	"Waypoint Bind",
+	"Right click the gear to set the key that teleports you to the saved waypoint.",
+	0.515,
+	72,
+	"waypoint_tp",
+	function() return waypointBind end,
+	function() return waypointBindString end,
+	function(bindValue, bindName)
+		setWaypointBind(bindValue, bindName or bindDisplayName(bindValue, bindName))
 	end
+)
+
+_, tpCursorBindRefresh = createTeleportBindCard(
+	teleportsBoard,
+	"TP Cursor Bind",
+	"Right click the gear to set the key that teleports you where the cursor is pointing.",
+	0.02,
+	236,
+	"tp_cursor",
+	function() return tpToCursorBind end,
+	function() return tpToCursorBindString end,
+	function(bindValue, bindName)
+		setTPCursorBind(bindValue, bindName or bindDisplayName(bindValue, bindName))
+	end
+)
+
+directActionPanel = createTeleportPanel(teleportsBoard, "Quick Actions", "Use the buttons below for immediate teleports without pressing any bind.", 0.515, 236, 116)
+createTeleportActionButton(directActionPanel, "TP To Waypoint", UDim2.new(0, 16, 0, 64), UDim2.new(0.46, 0, 0, 36), function()
+	teleportToWaypoint()
 end)
+createTeleportActionButton(directActionPanel, "TP To Cursor", UDim2.new(0.54, 0, 0, 64), UDim2.new(0.46, 0, 0, 36), function()
+	teleportToCursorNow()
+end)
+
+refreshWaypointStatus()
 
 -- Bind para trocar tecla do menu
 menuBindBtn = Instance.new("TextButton")
@@ -8153,6 +8874,7 @@ function collectMenuConfig()
 
 	configData.values.instantInteractWhitelistText = instantInteractWhitelistText
 	configData.values.instantInteractBlacklistText = instantInteractBlacklistText
+	configData.values.stealDistanceValue = stealDistanceValue
 
 	return configData
 end
@@ -8470,9 +9192,10 @@ function loadConfig(configName)
 
 	if type(configData.toggles) == "table" then
 		for key, savedState in pairs(configData.toggles) do
-			local entry = configToggleRegistry[key]
+			local canonicalKey = CONFIG_TOGGLE_KEY_ALIASES[key] or key
+			local entry = configToggleRegistry[canonicalKey]
 			if entry and entry.setState and type(savedState) == "boolean" then
-				entry.setState(savedState, true)
+				entry.setState(savedState, "force")
 			end
 		end
 	end
@@ -8488,6 +9211,19 @@ function loadConfig(configName)
 			instantInteractBlacklistText = configData.values.instantInteractBlacklistText
 			if instantInteractBlacklistInput then
 				instantInteractBlacklistInput.Text = instantInteractBlacklistText
+			end
+			instantInteractBlockShopsEnabled = instantInteractBlacklistText == instantInteractDefaultShopBlacklist
+			if syncInstantInteractBlockShopsButton then
+				syncInstantInteractBlockShopsButton()
+			end
+		end
+		if type(configData.values.stealDistanceValue) == "number" then
+			setStealDistanceValue(configData.values.stealDistanceValue)
+			if stealDistanceInput then
+				stealDistanceInput.Text = tostring(stealDistanceValue)
+			end
+			if stealDistanceLabel then
+				stealDistanceLabel.Text = "Steal Distance: " .. tostring(stealDistanceValue)
 			end
 		end
 	end
@@ -8571,6 +9307,9 @@ function unloadNightMenu()
 		if instantInteractConnection then instantInteractConnection:Disconnect() instantInteractConnection = nil end
 		if instantInteractHiddenConnection then instantInteractHiddenConnection:Disconnect() instantInteractHiddenConnection = nil end
 		if instantInteractLoop then instantInteractLoop:Disconnect() instantInteractLoop = nil end
+		if fastStealPromptConnection then fastStealPromptConnection:Disconnect() fastStealPromptConnection = nil end
+		if stealDistancePromptConnection then stealDistancePromptConnection:Disconnect() stealDistancePromptConnection = nil end
+		restoreStealDistancePrompts()
 	end)
 
 	pcall(function()
@@ -9575,36 +10314,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	elseif waypointBind and inputMatchesBind(input, waypointBind) then
 		teleportToWaypoint()
 	elseif tpToCursorBind and inputMatchesBind(input, tpToCursorBind) then
-		-- TP para onde o cursor estÃ¡ apontando com cooldown e verificaÃ§Ã£o de fÃ­sica
-		local currentTime = tick()
-		if currentTime - tpCursorCooldown < 3 then
-			return
-		end
-		
-		local mouse = LocalPlayer:GetMouse()
-		local character = LocalPlayer.Character
-		if character and mouse.Hit then
-			local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-			if humanoidRootPart then
-				local targetPos = mouse.Hit.Position + Vector3.new(0, 3, 0)
-				
-				-- Verificar se hÃ¡ parede entre vocÃª e o destino
-				local direction = (targetPos - humanoidRootPart.Position)
-				local rayParams = RaycastParams.new()
-				rayParams.FilterDescendantsInstances = {character}
-				rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-				
-				local rayResult = workspace:Raycast(humanoidRootPart.Position, direction, rayParams)
-				
-				if rayResult then
-					return
-				end
-				
-				-- TP instantÃ¢neo
-				humanoidRootPart.CFrame = CFrame.new(targetPos)
-				tpCursorCooldown = currentTime
-			end
-		end
+		teleportToCursorNow()
 	end
 end)
 
