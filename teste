@@ -1,4 +1,4 @@
--- ========= ServiÃ§os =========
+-- ========= ServiÃƒÂ§os =========
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -25,7 +25,7 @@ task.spawn(function()
 	end
 end)
 
--- Silenciar avisos de WaitForChild e erros de animaÃ§Ã£o do jogo
+-- Silenciar avisos de WaitForChild e erros de animaÃƒÂ§ÃƒÂ£o do jogo
 oldWarn = warn
 warn = function(...)
 	local msg = tostring(...)
@@ -40,7 +40,7 @@ Camera = workspace.CurrentCamera
 -- ========= SISTEMA CENTRAL DE ESP =========
 ESPData = {}
 
--- FunÃ§Ã£o para verificar se estÃ¡ na mesma dimensÃ£o/mapa
+-- FunÃƒÂ§ÃƒÂ£o para verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o/mapa
 function isInSameDimension(targetCharacter)
 	local myChar = LocalPlayer.Character
 	if not myChar or not targetCharacter then return false end
@@ -51,7 +51,7 @@ function isInSameDimension(targetCharacter)
 	
 	if not myRoot or not targetRoot then return false end
 	
-	-- Se a distÃ¢ncia for absurdamente grande (>10000), provavelmente estÃ£o em dimensÃµes diferentes
+	-- Se a distÃƒÂ¢ncia for absurdamente grande (>10000), provavelmente estÃƒÂ£o em dimensÃƒÂµes diferentes
 	local distance = (targetRoot.Position - myRoot.Position).Magnitude
 	if distance > 10000 then return false end
 	
@@ -66,7 +66,7 @@ function isValidPlayer(player)
 	return true
 end
 
--- ========= ConfiguraÃ§Ãµes Globais (OtimizaÃ§Ã£o para reduzir registros locais) =========
+-- ========= ConfiguraÃƒÂ§ÃƒÂµes Globais (OtimizaÃƒÂ§ÃƒÂ£o para reduzir registros locais) =========
 ESP_DEFAULT_ON = false
 SHOW_NAME_DEFAULT = false
 SHOW_HEALTH_DEFAULT = false
@@ -78,7 +78,7 @@ TEAM_FILTER_DEFAULT = "Todos"
 ESP_MAX_DISTANCE = 500
 
 
--- Aimbot Config Global (FOV sempre visÃ­vel quando ativado)
+-- Aimbot Config Global (FOV sempre visÃƒÂ­vel quando ativado)
 aimbotEnabled = false
 aimbotFOV = 100
 aimbotFOVZero = 0
@@ -535,7 +535,7 @@ function applyStealDistancePrompt(prompt)
 	end
 
 	local baseDistance = tonumber(prompt.MaxActivationDistance) or 10
-	local desired = math.clamp(tonumber(stealDistanceValue) or 22, 8, 120)
+	local desired = math.clamp(tonumber(stealDistanceValue) or 22, 8, 500)
 	if desired > baseDistance then
 		prompt.MaxActivationDistance = desired
 	end
@@ -586,7 +586,7 @@ function setStealDistanceValue(newValue)
 	if not parsed then
 		return false
 	end
-	parsed = math.clamp(math.floor(parsed), 8, 300)
+	parsed = math.clamp(math.floor(parsed), 8, 500)
 	stealDistanceValue = parsed
 	if stealDistanceEnabled then
 		task.spawn(function()
@@ -620,7 +620,7 @@ function isPromptInteractable(prompt)
 	local allowedDistance = (prompt.MaxActivationDistance or 10) + 1.5
 	if stealDistanceEnabled and isStealPrompt(prompt) then
 		local requested = tonumber(stealDistanceValue) or 22
-		local capped = math.min(requested, tonumber(stealDistanceSafeLimit) or 16)
+		local capped = math.min(requested, tonumber(stealDistanceSafeLimit) or 500)
 		allowedDistance = math.max(allowedDistance, capped + 1.5)
 	end
 	if getPromptDistance(prompt) > allowedDistance then return false end
@@ -649,9 +649,11 @@ function getBestInstantInteractPrompt()
 
 			-- For steal prompts, only target values >= configured minimum (default: 20k).
 			if (not isSteal) or (numeric >= (tonumber(stealMinTargetValue) or 20000)) then
+				local preferWorst = string.lower(tostring(stealTargetMode or "Best")) == "worst"
+				local numericBetter = (not preferWorst and numeric > bestNumeric) or (preferWorst and (bestNumeric < 0 or numeric < bestNumeric))
 				if priority > bestPriority
 					or (priority == bestPriority and prompt == stealFocusPrompt and bestPrompt ~= stealFocusPrompt)
-					or (priority == bestPriority and numeric > bestNumeric)
+					or (priority == bestPriority and numericBetter)
 					or (priority == bestPriority and numeric == bestNumeric and distance < bestDistance) then
 					bestPrompt = prompt
 					bestPriority = priority
@@ -853,7 +855,7 @@ FREEFLY_VERTICAL_SPEED = 30
 PANEL_MIN = Vector2.new(500, 600)
 PANEL_MAX = Vector2.new(900, 800)
 
--- ========= Estado Global (OtimizaÃ§Ã£o) =========
+-- ========= Estado Global (OtimizaÃƒÂ§ÃƒÂ£o) =========
 espEnabled = ESP_DEFAULT_ON
 showName = SHOW_NAME_DEFAULT
 showHealth = SHOW_HEALTH_DEFAULT
@@ -868,17 +870,17 @@ showSkeleton = false
 showBox3D = false
 showTracers = false
 tracerMode = "Sky" -- Sky ou Center
-espColor = Color3.fromRGB(255, 0, 0) -- Cor padrÃ£o das boxes
-espTracerColor = Color3.fromRGB(255, 255, 255) -- Cor padrÃ£o dos tracers (branco)
+espColor = Color3.fromRGB(255, 0, 0) -- Cor padrÃƒÂ£o das boxes
+espTracerColor = Color3.fromRGB(255, 255, 255) -- Cor padrÃƒÂ£o dos tracers (branco)
 showEspDistance = false
-espDistanceColor = Color3.fromRGB(255, 255, 0) -- Cor padrÃ£o da distÃ¢ncia (amarelo)
+espDistanceColor = Color3.fromRGB(255, 255, 0) -- Cor padrÃƒÂ£o da distÃƒÂ¢ncia (amarelo)
 
 boxes = {}           -- [Character] = BoxHandles
 tracers = {}         -- [Character] = Line
 distanceLabels = {}  -- [Character] = Drawing.Text
 nameLabels = {}      -- [Character] = Drawing.Text
 healthBars = {}      -- [Character] = {bg, fill} - Barras de vida 2D
-espNameColor = Color3.fromRGB(255, 255, 255) -- Cor padrÃ£o do nome (branco)
+espNameColor = Color3.fromRGB(255, 255, 255) -- Cor padrÃƒÂ£o do nome (branco)
 
 -- Player enhancements globais
 speedBoostEnabled = false
@@ -938,7 +940,7 @@ stealDistanceEnabled = false
 stealDistanceValue = 22
 stealDistancePromptRestore = {}
 stealDistancePromptConnection = nil
-stealDistanceSafeLimit = 16
+stealDistanceSafeLimit = 500
 stealInteractionCooldown = 6
 stealLastCompleteAt = 0
 stealTpUsedForPrompt = {}
@@ -946,6 +948,7 @@ stealMinTargetValue = 20000
 stealFocusPrompt = nil
 stealReturnCFrame = nil
 stealReturnPending = false
+stealTargetMode = "Best"
 instantInteractBlockShopsEnabled = true
 
 highlights = {}         -- [Character] = Highlight
@@ -1278,7 +1281,7 @@ function magnetPlayer(targetPlayer, autoKillAfter)
     end
 end
 
--- FunÃ§Ã£o Magnet + Kill garantido
+-- FunÃƒÂ§ÃƒÂ£o Magnet + Kill garantido
 function magnetAndKill(targetPlayer)
     if not targetPlayer then return end
     magnetPlayer(targetPlayer, true)
@@ -1539,8 +1542,8 @@ function performKickPush(targetPlayer)
 		end
 
 		-- Fling 'Ballerina' Descentralizado (Impede cancelamento nulo em alvos parados)
-		-- Posições perfeitamente sincronizadas (0,0,0) podem fazer a engine anular o impacto. 
-		-- Oscilamos a posição internamente garantindo hitboxes assimétricos e repelindo o alvo.
+		-- PosiÃ§Ãµes perfeitamente sincronizadas (0,0,0) podem fazer a engine anular o impacto. 
+		-- Oscilamos a posiÃ§Ã£o internamente garantindo hitboxes assimÃ©tricos e repelindo o alvo.
 		local offset = Vector3.new(1.2, 0, 1.2)
 		if math.floor(elapsed * 20) % 2 == 0 then offset = Vector3.new(-1.2, 0, -1.2) end
 		local desiredPos = liveTargetRoot.Position + offset
@@ -1624,7 +1627,7 @@ searchQuery = ""
 searchBox = nil
 isTypingInSearch = false
 
--- ========= FUNÃ‡Ã•ES AUXILIARES PARA LISTA DE JOGADORES =========
+-- ========= FUNÃƒâ€¡Ãƒâ€¢ES AUXILIARES PARA LISTA DE JOGADORES =========
 function getPlayerTeam(player)
 	if not player.Team then return "Sem Equipe" end
 	return player.Team.Name
@@ -1688,13 +1691,13 @@ function formatPlayerInfo(player)
 		info = info .. string.format(" | HP: %d/%d", math.floor(health), math.floor(maxHealth))
 	end
 	if not alive then
-		info = info .. " | ðŸ’€ MORTO"
+		info = info .. " | Ã°Å¸â€™â‚¬ MORTO"
 	end
 
 	return info
 end
 
--- FunÃ§Ã£o para atualizar um botÃ£o de jogador especÃ­fico
+-- FunÃƒÂ§ÃƒÂ£o para atualizar um botÃƒÂ£o de jogador especÃƒÂ­fico
 function updatePlayerButton(player, button)
 	if not button or not button.Parent then return end
 
@@ -1706,7 +1709,7 @@ function updatePlayerButton(player, button)
 	local healthBarBg = mainContainer:FindFirstChild("HealthBarBg")
 	local statusLabel = mainContainer:FindFirstChild("StatusLabel")
 
-	-- Atualizar informaÃ§Ãµes secundÃ¡rias
+	-- Atualizar informaÃƒÂ§ÃƒÂµes secundÃƒÂ¡rias
 	if infoLabel then
 		infoLabel.Text = formatPlayerInfo(player)
 	end
@@ -1737,7 +1740,7 @@ function updatePlayerButton(player, button)
 	end
 end
 
--- Sistema de atualizaÃ§Ã£o em tempo real (DESABILITADO para nÃ£o interferir na pesquisa)
+-- Sistema de atualizaÃƒÂ§ÃƒÂ£o em tempo real (DESABILITADO para nÃƒÂ£o interferir na pesquisa)
 function startRealTimeUpdates()
 	-- Desabilitado para evitar recarregar lista durante pesquisa
 end
@@ -1919,7 +1922,7 @@ function setupPlayer(player)
 	end
 end
 
--- Conectar eventos de mudanÃ§a de equipe
+-- Conectar eventos de mudanÃƒÂ§a de equipe
 function setupPlayerEvents(player)
 	if not player then return end
 
@@ -1951,12 +1954,12 @@ local function createPlayerButton(player)
 
 	local btn = Instance.new("Frame")
 	btn.Name = player.Name .. "_Enhanced"
-	btn.Size = UDim2.new(1, -10, 0, 60) -- Maior para mais informaÃ§Ãµes
+	btn.Size = UDim2.new(1, -10, 0, 60) -- Maior para mais informaÃƒÂ§ÃƒÂµes
 	btn.BackgroundColor3 = SAKURA.buttonBg
 	btn.Parent = playersList
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
 
-	-- Indicador de seleÃ§Ã£o lateral
+	-- Indicador de seleÃƒÂ§ÃƒÂ£o lateral
 	local selectionIndicator = Instance.new("Frame")
 	selectionIndicator.Size = UDim2.new(0, 4, 1, -8)
 	selectionIndicator.Position = UDim2.new(0, 2, 0, 4)
@@ -1994,7 +1997,7 @@ local function createPlayerButton(player)
 	nameLabel.Text = player.DisplayName .. " (@" .. player.Name .. ")"
 	nameLabel.Parent = mainContainer
 
-	-- InformaÃ§Ãµes secundÃ¡rias (equipe, distÃ¢ncia, vida)
+	-- InformaÃƒÂ§ÃƒÂµes secundÃƒÂ¡rias (equipe, distÃƒÂ¢ncia, vida)
 	local infoLabel = Instance.new("TextLabel")
 	infoLabel.Size = UDim2.new(0.6, 0, 0, 16)
 	infoLabel.Position = UDim2.new(0, 0, 0, 22)
@@ -2044,7 +2047,7 @@ local function createPlayerButton(player)
 	statusLabel.Text = isPlayerAlive(player) and "VIVO" or "MORTO"
 	statusLabel.Parent = mainContainer
 
-	-- BotÃ£o invisÃ­vel para cliques
+	-- BotÃƒÂ£o invisÃƒÂ­vel para cliques
 	local clickBtn = Instance.new("TextButton")
 	clickBtn.Size = UDim2.new(1, 0, 1, 0)
 	clickBtn.BackgroundTransparency = 1
@@ -2068,7 +2071,7 @@ local function createPlayerButton(player)
 		btn.BackgroundColor3 = SAKURA.surfaceLight
 		selectedPlayer = player
 
-		-- Mostrar painel de aÃ§Ãµes
+		-- Mostrar painel de aÃƒÂ§ÃƒÂµes
 		if actionsPanel then
 			actionsPanel.Visible = true
 			if tpBtn then tpBtn.Visible = true end
@@ -2132,13 +2135,13 @@ end
 local FlySystem = {
     flying = false,
     noclip = false,
-    speed = 1,  -- ComeÃ§a com velocidade 1
+    speed = 1,  -- ComeÃƒÂ§a com velocidade 1
     bodyGyro = nil,
     bodyVelocity = nil,
     control = {F = 0, B = 0, L = 0, R = 0, U = 0, D = 0}
 }
 
--- FunÃ§Ã£o para ativar/desativar Fly
+-- FunÃƒÂ§ÃƒÂ£o para ativar/desativar Fly
 function FlySystem:toggleFly()
     self.flying = not self.flying
 
@@ -2161,7 +2164,7 @@ function FlySystem:toggleFly()
         self.bodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
         self.bodyVelocity.Velocity = Vector3.new(0, 0, 0)
     else
-        -- Desativar Fly e restaurar transparÃªncia
+        -- Desativar Fly e restaurar transparÃƒÂªncia
         if self.bodyGyro then self.bodyGyro:Destroy() end
         if self.bodyVelocity then self.bodyVelocity:Destroy() end
         self.bodyGyro = nil
@@ -2169,12 +2172,12 @@ function FlySystem:toggleFly()
     end
 end
 
--- FunÃ§Ã£o para ativar/desativar Noclip
+-- FunÃƒÂ§ÃƒÂ£o para ativar/desativar Noclip
 function FlySystem:toggleNoclip()
     self.noclip = not self.noclip
 end
 
--- FunÃ§Ã£o para ajustar velocidade do Fly
+-- FunÃƒÂ§ÃƒÂ£o para ajustar velocidade do Fly
 function FlySystem:setSpeed(newSpeed)
     self.speed = math.clamp(newSpeed, 1, 100)
 end
@@ -2233,7 +2236,7 @@ function FlySystem:startLoop()
 
         -- Sistema Fly
         if self.flying and humanoidRootPart then
-            -- Desabilitar animaÃ§Ã£o de queda
+            -- Desabilitar animaÃƒÂ§ÃƒÂ£o de queda
             if humanoid then
                 humanoid:ChangeState(Enum.HumanoidStateType.Flying)
             end
@@ -2245,7 +2248,7 @@ function FlySystem:startLoop()
             local right = cam.CFrame.RightVector
             local up = Vector3.new(0, 1, 0)
 
-            -- Calcular direÃ§Ã£o do movimento
+            -- Calcular direÃƒÂ§ÃƒÂ£o do movimento
             moveVec = moveVec
                 + forward * (self.control.F - self.control.B)
                 + right * (self.control.R - self.control.L)
@@ -2260,7 +2263,7 @@ function FlySystem:startLoop()
     end)
 end
 
--- FunÃ§Ã£o para resetar/restaurar ao respawnar
+-- FunÃƒÂ§ÃƒÂ£o para resetar/restaurar ao respawnar
 function FlySystem:setupCharacterEvents()
     local function onCharacterAdded(char)
         -- Limpar controles antigos se existirem
@@ -2269,7 +2272,7 @@ function FlySystem:setupCharacterEvents()
         self.bodyGyro = nil
         self.bodyVelocity = nil
 
-        -- Se o fly estava ativo, restaurÃ¡-lo no novo personagem
+        -- Se o fly estava ativo, restaurÃƒÂ¡-lo no novo personagem
         if self.flying then
             task.spawn(function()
                 task.wait(0.5) -- Esperar carregar
@@ -2306,16 +2309,16 @@ end
 -- Inicializar o sistema
 FlySystem:init()
 
--- VariÃ¡veis globais para compatibilidade - Sincronizadas
+-- VariÃƒÂ¡veis globais para compatibilidade - Sincronizadas
 flying = FlySystem.flying
 noclip = FlySystem.noclip
 speed = FlySystem.speed
 
--- FunÃ§Ãµes de compatibilidade - Atualizam globais
+-- FunÃƒÂ§ÃƒÂµes de compatibilidade - Atualizam globais
 function toggleFly()
     FlySystem:toggleFly()
     flying = FlySystem.flying
-    noclip = FlySystem.noclip  -- Noclip Ã© ativado automaticamente com fly
+    noclip = FlySystem.noclip  -- Noclip ÃƒÂ© ativado automaticamente com fly
 end
 
 function toggleNoclip()
@@ -2323,7 +2326,7 @@ function toggleNoclip()
     noclip = FlySystem.noclip
 end
 
--- ========= FunÃ§Ã£o para Destravar Mouse =========
+-- ========= FunÃƒÂ§ÃƒÂ£o para Destravar Mouse =========
 function unlockMouse()
 	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	UserInputService.MouseIconEnabled = true
@@ -2357,7 +2360,7 @@ function unlockMouse()
 	label.TextWrapped = true
 	label.Parent = frame
 
-	-- Remover apÃ³s 3 segundos
+	-- Remover apÃƒÂ³s 3 segundos
 	task.delay(3, function()
 		notification:Destroy()
 	end)
@@ -2384,15 +2387,15 @@ function forEachCharacterPart(char, fn)
 end
 
 function isEnemy(p)
-	-- Verificar se nÃ£o Ã© vocÃª mesmo
+	-- Verificar se nÃƒÂ£o ÃƒÂ© vocÃƒÂª mesmo
 	if p == LocalPlayer then return false end
 	
-	-- Se team check estiver desativado, todos sÃ£o inimigos
+	-- Se team check estiver desativado, todos sÃƒÂ£o inimigos
 	if not aimbotTeamCheck then return true end
 	
 	-- Se team check estiver ativado, verificar equipe
 	if not LocalPlayer.Team or not p.Team then
-		-- Se algum jogador nÃ£o tem equipe, considerar inimigo
+		-- Se algum jogador nÃƒÂ£o tem equipe, considerar inimigo
 		return true
 	end
 	
@@ -2419,7 +2422,7 @@ function ensureHighlight(character)
 		return
 	end
 	
-	-- Verificar se estÃ¡ na mesma dimensÃ£o
+	-- Verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o
 	if not isInSameDimension(character) then
 		if highlights[character] then
 			pcall(function() highlights[character]:Destroy() end)
@@ -2436,7 +2439,7 @@ function ensureHighlight(character)
 		return
 	end
 	
-	-- Verificar distÃ¢ncia ANTES de criar
+	-- Verificar distÃƒÂ¢ncia ANTES de criar
 	local myChar = LocalPlayer.Character
 	if myChar then
 		local myRoot = getPrimaryPart(myChar)
@@ -2453,7 +2456,7 @@ function ensureHighlight(character)
 		end
 	end
 	
-	-- Criar highlight se nÃ£o existir
+	-- Criar highlight se nÃƒÂ£o existir
 	local h = highlights[character]
 	if not h or not h.Parent then
 		h = Instance.new("Highlight")
@@ -2464,18 +2467,18 @@ function ensureHighlight(character)
 		highlights[character] = h
 	end
 
-	-- Sistema: verifica se estÃ¡ na tela E se nÃ£o tem parede
+	-- Sistema: verifica se estÃƒÂ¡ na tela E se nÃƒÂ£o tem parede
 	local camera = workspace.CurrentCamera
 	local isVisible = false
 	
 	if camera and espAutoEnabled then
 		local targetRoot = getPrimaryPart(character)
 		if targetRoot and myChar then
-			-- 1. Verificar se estÃ¡ na tela
+			-- 1. Verificar se estÃƒÂ¡ na tela
 			local screenPos, onScreen = camera:WorldToViewportPoint(targetRoot.Position)
 			
 			if onScreen then
-				-- 2. Verificar se nÃ£o tem parede no meio (raycast)
+				-- 2. Verificar se nÃƒÂ£o tem parede no meio (raycast)
 				local myRoot = getPrimaryPart(myChar)
 				if myRoot then
 					local direction = (targetRoot.Position - camera.CFrame.Position)
@@ -2485,7 +2488,7 @@ function ensureHighlight(character)
 					
 					local rayResult = workspace:Raycast(camera.CFrame.Position, direction, rayParams)
 					
-					-- Se nÃ£o bateu em nada OU bateu no prÃ³prio character = visÃ­vel
+					-- Se nÃƒÂ£o bateu em nada OU bateu no prÃƒÂ³prio character = visÃƒÂ­vel
 					isVisible = not rayResult or rayResult.Instance:IsDescendantOf(character)
 				end
 			end
@@ -2493,11 +2496,11 @@ function ensureHighlight(character)
 	end
 
 	if espAutoEnabled then
-		-- Verde se visÃ­vel na tela SEM parede, vermelho se nÃ£o
+		-- Verde se visÃƒÂ­vel na tela SEM parede, vermelho se nÃƒÂ£o
 		h.FillColor = isVisible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 		h.OutlineColor = isVisible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 	else
-		-- Cor padrÃ£o para TODOS os jogadores
+		-- Cor padrÃƒÂ£o para TODOS os jogadores
 		h.FillColor = Color3.fromRGB(255, 0, 0)
 		h.OutlineColor = Color3.fromRGB(255, 255, 255)
 	end
@@ -2511,7 +2514,7 @@ function ensureHighlight(character)
 	end
 end
 
--- FunÃ§Ã£o separada para exibir distÃ¢ncia (embaixo da box)
+-- FunÃƒÂ§ÃƒÂ£o separada para exibir distÃƒÂ¢ncia (embaixo da box)
 function ensureDistanceLabel(character)
 	if not character or not character.Parent then
 		if distanceLabels[character] then
@@ -2521,7 +2524,7 @@ function ensureDistanceLabel(character)
 		return
 	end
 	
-	-- Verificar se estÃ¡ na mesma dimensÃ£o
+	-- Verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o
 	if not isInSameDimension(character) then
 		if distanceLabels[character] then
 			pcall(function() distanceLabels[character]:Remove() end)
@@ -2538,7 +2541,7 @@ function ensureDistanceLabel(character)
 		return
 	end
 	
-	-- Verificar distÃ¢ncia mÃ¡xima
+	-- Verificar distÃƒÂ¢ncia mÃƒÂ¡xima
 	local myChar = LocalPlayer.Character
 	if myChar then
 		local myRoot = getPrimaryPart(myChar)
@@ -2596,7 +2599,7 @@ function ensureDistanceLabel(character)
 	end
 end
 
--- FunÃ§Ã£o para exibir nome (em cima da box)
+-- FunÃƒÂ§ÃƒÂ£o para exibir nome (em cima da box)
 function ensureNameLabel(character, player)
 	if not character or not character.Parent or not player or not player.Parent then
 		if nameLabels[character] then
@@ -2606,7 +2609,7 @@ function ensureNameLabel(character, player)
 		return
 	end
 	
-	-- Verificar se estÃ¡ na mesma dimensÃ£o
+	-- Verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o
 	if not isInSameDimension(character) then
 		if nameLabels[character] then
 			pcall(function() nameLabels[character]:Remove() end)
@@ -2623,7 +2626,7 @@ function ensureNameLabel(character, player)
 		return
 	end
 	
-	-- Verificar distÃ¢ncia
+	-- Verificar distÃƒÂ¢ncia
 	local myChar = LocalPlayer.Character
 	if myChar then
 		local myRoot = getPrimaryPart(myChar)
@@ -2673,7 +2676,7 @@ function ensureNameLabel(character, player)
 	label.Visible = true
 end
 
--- Box ESP dinÃ¢mica que se adapta ao tamanho real do personagem
+-- Box ESP dinÃƒÂ¢mica que se adapta ao tamanho real do personagem
 function ensureBox3D(character)
 	if not character or not character.Parent then
 		if boxes[character] then
@@ -2683,7 +2686,7 @@ function ensureBox3D(character)
 		return
 	end
 
-	-- Verificar se estÃ¡ na mesma dimensÃ£o
+	-- Verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o
 	if not isInSameDimension(character) then
 		if boxes[character] then
 			pcall(function() boxes[character]:Destroy() end)
@@ -2700,7 +2703,7 @@ function ensureBox3D(character)
 		return
 	end
 	
-	-- Verificar distÃ¢ncia
+	-- Verificar distÃƒÂ¢ncia
 	local myChar = LocalPlayer.Character
 	if myChar then
 		local myRoot = getPrimaryPart(myChar)
@@ -2721,25 +2724,25 @@ function ensureBox3D(character)
 	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
 	if not head or not humanoidRootPart then return end
 
-	-- Usar proporÃ§Ãµes padrÃ£o de personagem Roblox (nÃ£o ler Size das partes
+	-- Usar proporÃƒÂ§ÃƒÂµes padrÃƒÂ£o de personagem Roblox (nÃƒÂ£o ler Size das partes
 	-- porque o Hitbox Expander pode ter alterado os tamanhos)
 	-- R15: ~5.3 studs de altura, ~2.5 studs de largura
 	-- R6: ~5.0 studs de altura, ~2.0 studs de largura
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local isR15 = humanoid and humanoid.RigType == Enum.HumanoidRigType.R15
 
-	local charHeight = isR15 and 5.4 or 5.0 -- Altura padrÃ£o do personagem  
+	local charHeight = isR15 and 5.4 or 5.0 -- Altura padrÃƒÂ£o do personagem  
 	local charWidth = isR15 and 3.2 or 2.8  -- Largura proporcional
 
-	-- Pequeno padding para a box nÃ£o ficar colada ao corpo
+	-- Pequeno padding para a box nÃƒÂ£o ficar colada ao corpo
 	charHeight = charHeight + 0.6
 	charWidth = charWidth + 0.4
 
-	-- Offset: centralizar a box no corpo (Root fica no centro do torso, nÃ£o do corpo inteiro)
-	-- A cabeÃ§a fica ~1.5 studs acima do root, os pÃ©s ~3 studs abaixo
+	-- Offset: centralizar a box no corpo (Root fica no centro do torso, nÃƒÂ£o do corpo inteiro)
+	-- A cabeÃƒÂ§a fica ~1.5 studs acima do root, os pÃƒÂ©s ~3 studs abaixo
 	local offsetY = isR15 and -0.4 or -0.3
 
-	-- Criar BillboardGui se nÃ£o existir
+	-- Criar BillboardGui se nÃƒÂ£o existir
 	if not boxes[character] then
 		local billboard = Instance.new("BillboardGui")
 		billboard.Name = "ESP_Box"
@@ -2797,7 +2800,7 @@ function ensureTracer(character)
 		return
 	end
 	
-	-- Verificar se estÃ¡ na mesma dimensÃ£o
+	-- Verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o
 	if not isInSameDimension(character) then
 		if tracers[character] then
 			pcall(function() tracers[character]:Remove() end)
@@ -2814,7 +2817,7 @@ function ensureTracer(character)
 		return
 	end
 	
-	-- Verificar distÃ¢ncia
+	-- Verificar distÃƒÂ¢ncia
 	local myChar = LocalPlayer.Character
 	if myChar then
 		local myRoot = getPrimaryPart(myChar)
@@ -2859,12 +2862,12 @@ function ensureTracer(character)
 	end
 	
 	if tracerMode == "Center" then
-		-- Center: Do chÃ£o (parte inferior central da tela) atÃ© o peito
+		-- Center: Do chÃƒÂ£o (parte inferior central da tela) atÃƒÂ© o peito
 		tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
 		tracer.To = Vector2.new(chestScreen.X, chestScreen.Y)
 		tracer.Visible = true
 	else
-		-- Sky: Do topo (parte superior central da tela) atÃ© o peito
+		-- Sky: Do topo (parte superior central da tela) atÃƒÂ© o peito
 		tracer.From = Vector2.new(camera.ViewportSize.X / 2, 0)
 		tracer.To = Vector2.new(chestScreen.X, chestScreen.Y)
 		tracer.Visible = true
@@ -2883,7 +2886,7 @@ function ensureHealthBar(character)
 		return
 	end
 
-	-- Verificar se estÃ¡ na mesma dimensÃ£o
+	-- Verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o
 	if not isInSameDimension(character) then
 		if healthBars[character] then
 			pcall(function()
@@ -2906,7 +2909,7 @@ function ensureHealthBar(character)
 		return
 	end
 	
-	-- Verificar distÃ¢ncia
+	-- Verificar distÃƒÂ¢ncia
 	local myChar = LocalPlayer.Character
 	if myChar then
 		local myRoot = getPrimaryPart(myChar)
@@ -2979,7 +2982,7 @@ function ensureHealthBar(character)
 	local barWidth = 4
 	local boxWidth = barHeight * 0.4
 
-	-- Posicionar barra Ã  esquerda da box
+	-- Posicionar barra ÃƒÂ  esquerda da box
 	local barX = topScreen.X - boxWidth/2 - barWidth - 6
 	local barY = topScreen.Y
 
@@ -3003,7 +3006,7 @@ function ensureHealthBar(character)
 end
 
 function ensureOverlayFor(p, character)
-	return -- Removido - nÃ£o usamos mais overlays de texto
+	return -- Removido - nÃƒÂ£o usamos mais overlays de texto
 end
 
 function overlayOffsetFor(positionName)
@@ -3056,7 +3059,7 @@ function refreshESPForPlayer(p)
 	end
 end
 
--- Sistema ESP Otimizado - Atualiza automaticamente apÃ³s morte
+-- Sistema ESP Otimizado - Atualiza automaticamente apÃƒÂ³s morte
 function cleanupESPForCharacter(character)
 	if not character then return end
 
@@ -3094,7 +3097,7 @@ function cleanupESPForCharacter(character)
 end
 
 -- Inicial + eventos de players (DESABILITADO - usar sistema manual)
--- Sistema de atualizaÃ§Ã£o automÃ¡tica do ESP sincronizado com lista
+-- Sistema de atualizaÃƒÂ§ÃƒÂ£o automÃƒÂ¡tica do ESP sincronizado com lista
 task.spawn(function()
 	while true do
 		task.wait(5) -- Atualizar a cada 5 segundos
@@ -3128,7 +3131,7 @@ task.spawn(function()
 			continue
 		end
 		
-		-- Limpar ESPs de personagens que nÃ£o existem mais
+		-- Limpar ESPs de personagens que nÃƒÂ£o existem mais
 		for char, highlight in pairs(highlights) do
 			if not char or not char.Parent then
 				pcall(function() highlight:Destroy() end)
@@ -3187,8 +3190,8 @@ task.spawn(function()
 	end
 end)
 
--- AtualizaÃ§Ã£o periÃ³dica otimizada (DESABILITADO - usar sistema manual acima)
--- O ESP agora Ã© atualizado no loop principal acima
+-- AtualizaÃƒÂ§ÃƒÂ£o periÃƒÂ³dica otimizada (DESABILITADO - usar sistema manual acima)
+-- O ESP agora ÃƒÂ© atualizado no loop principal acima
 
 
 
@@ -3196,7 +3199,7 @@ end)
 
 
 
--- ========= Spectate (cÃ¢mara) - VERSÃƒO FORNECIDA =========
+-- ========= Spectate (cÃƒÂ¢mara) - VERSÃƒÆ’O FORNECIDA =========
 function startSpectate(p)
     if not p or p == LocalPlayer then return end
     local targetChar = p.Character
@@ -3263,7 +3266,7 @@ end
 
 
 
--- Se o espectado respawnar, mantÃ©m
+-- Se o espectado respawnar, mantÃƒÂ©m
 Players.PlayerAdded:Connect(function(p)
 	if p == spectating then
 		p.CharacterAdded:Connect(function(char)
@@ -3276,7 +3279,7 @@ Players.PlayerAdded:Connect(function(p)
 	end
 end)
 
--- Sistema de verificaÃ§Ã£o contÃ­nua do spectate
+-- Sistema de verificaÃƒÂ§ÃƒÂ£o contÃƒÂ­nua do spectate
 RunService.RenderStepped:Connect(function()
 	if spectating and spectating.Parent then
 		local targetChar = spectating.Character
@@ -3285,7 +3288,7 @@ RunService.RenderStepped:Connect(function()
 			return
 		end
 
-		-- Garantir que a cÃ¢mera ainda estÃ¡ no modo correto
+		-- Garantir que a cÃƒÂ¢mera ainda estÃƒÂ¡ no modo correto
 		local hum = targetChar:FindFirstChildOfClass("Humanoid")
 		if Camera.CameraType ~= Enum.CameraType.Custom or Camera.CameraSubject ~= hum then
 			Camera.CameraType = Enum.CameraType.Custom
@@ -3322,7 +3325,7 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- ========= TEMA Ã‰PICO - Purple Storm =========
+-- ========= TEMA Ãƒâ€°PICO - Purple Storm =========
 local SAKURA = {
     primary = Color3.fromRGB(221, 186, 248),
     secondary = Color3.fromRGB(236, 217, 250),
@@ -3340,7 +3343,7 @@ local SAKURA = {
     shadow = Color3.fromRGB(0, 0, 0)
 }
 
--- Compatibility colors (slider track visÃ­vel no fundo Solix)
+-- Compatibility colors (slider track visÃƒÂ­vel no fundo Solix)
 local COLOR_SLIDER_TRACK = SAKURA.surface
 local COLOR_NEON_PINK = SAKURA.primary
 local COLOR_BG_MAIN = SAKURA.background
@@ -3563,7 +3566,7 @@ end
 local function showTooltip(t, element) _G.showTooltip(t, element) end
 local function hideTooltip() _G.hideTooltip() end
 
--- Main Frame com transparÃªncia e efeito de raios
+-- Main Frame com transparÃƒÂªncia e efeito de raios
 mainFrame = New("Frame", {
 	Name = "MainFrame",
 	BackgroundColor3 = C.BgMain,
@@ -3581,7 +3584,7 @@ mainStroke.Transparency = 0.55
 
 
 
--- Padding interno do mainFrame para melhor respiraÃ§Ã£o visual
+-- Padding interno do mainFrame para melhor respiraÃƒÂ§ÃƒÂ£o visual
 local mainPadding = New("UIPadding", {
 	PaddingTop = UDim.new(0, 8),
 	PaddingBottom = UDim.new(0, 8),
@@ -3596,7 +3599,7 @@ local header = New("Frame", {
 	BorderSizePixel = 0,
 	Size = UDim2.new(1, 0, 0, 42),
 }, mainFrame)
--- Linha inferior lilÃ¡s (detalhe)
+-- Linha inferior lilÃƒÂ¡s (detalhe)
 local headerLine = New("Frame", {
 	BackgroundColor3 = C.PurpleLine,
 	BackgroundTransparency = 0.6,
@@ -3676,7 +3679,7 @@ TopBtn("-", -72, Color3.fromRGB(255, 220, 50), function()
 end)
 TopBtn("X", -36, Color3.fromRGB(230, 70, 70), function() showPanel(false) end)
 
--- Sidebar (185px) â€“ abas alinhadas, tema escuro
+-- Sidebar (185px) Ã¢â‚¬â€œ abas alinhadas, tema escuro
 minimizedDock = New("Frame", {
 	Name = "MinimizedDock",
 	BackgroundColor3 = C.BgTopbar,
@@ -3739,7 +3742,7 @@ if oldMinimizeBtn then
 	oldMinimizeBtn:Destroy()
 end
 
-minimizeBtn = TopBtn("â”€", -72, Color3.fromRGB(255, 220, 50), function()
+minimizeBtn = TopBtn("Ã¢â€â‚¬", -72, Color3.fromRGB(255, 220, 50), function()
 	if setMinimizedState then
 		setMinimizedState(not menuIsMinimized)
 	end
@@ -3932,7 +3935,7 @@ joinBtn.MouseLeave:Connect(function()
 	UI_Tween(joinBtn, {BackgroundColor3 = C.Purple}, 0.2)
 end)
 
--- Content (Ã¡rea central) â€“ fundo com detalhe
+-- Content (ÃƒÂ¡rea central) Ã¢â‚¬â€œ fundo com detalhe
 content = New("Frame", {
 	Name = "Content",
 	BackgroundColor3 = C.BgSection,
@@ -3950,7 +3953,7 @@ pages = {}
 tabs = {}
 currentTab = "UPDATES"
 
--- Padding unificado para todas as abas (lateral igual Ã  aba Misc)
+-- Padding unificado para todas as abas (lateral igual ÃƒÂ  aba Misc)
 local PAGE_PADDING_TOP, PAGE_PADDING_BOTTOM = 20, 20
 local PAGE_PADDING_LEFT, PAGE_PADDING_RIGHT = 24, 24
 
@@ -4425,7 +4428,7 @@ createTab("THEME", "Theme", "", 9)
 
 setTab("UPDATES")
 
--- Garantir que o menu abra ao carregar (evita tela preta / "nÃ£o abre")
+-- Garantir que o menu abra ao carregar (evita tela preta / "nÃƒÂ£o abre")
 panelVisible = true
 mainFrame.Visible = true
 
@@ -4453,7 +4456,7 @@ end)
 
 
 categoryLayoutOrder = 0
--- Categoria com espaÃ§amento adequado
+-- Categoria com espaÃƒÂ§amento adequado
 function createCategory(parent, titleText)
 	categoryLayoutOrder = categoryLayoutOrder + 1
 	local category = New("Frame", {
@@ -4775,7 +4778,7 @@ function createTeleportBindCard(parent, titleText, descriptionText, xScale, yOff
 		Position = UDim2.new(1, -46, 1, -46),
 		Size = UDim2.new(0, 30, 0, 30),
 		Font = Enum.Font.GothamBold,
-		Text = "⚙",
+		Text = utf8.char(0x2699),
 		TextColor3 = C.TxtMid,
 		TextSize = 18,
 		AutoButtonColor = false,
@@ -4925,7 +4928,7 @@ function createToggle(parent, text, callback, tooltipText, options)
 			BackgroundTransparency = 1,
 			Position = UDim2.new(1, -36, 0.5, -14),
 			Size = UDim2.new(0, 28, 0, 28),
-			Text = "⚙",
+			Text = utf8.char(0x2699),
 			Font = Enum.Font.GothamBold,
 			TextSize = 21,
 			TextColor3 = C.TxtMid,
@@ -5225,7 +5228,7 @@ local function makeToggleBindSetters(bindValueRef, bindNameRef)
 	end
 end
 
--- Players Page - Mesmo espaÃ§amento lateral que Misc
+-- Players Page - Mesmo espaÃƒÂ§amento lateral que Misc
 local playerButtons = {}
 local playersCategory = createCategory(playersPage, "Player List")
 
@@ -5235,7 +5238,7 @@ topContainer.Size = UDim2.new(1, 0, 0, 56)
 topContainer.BackgroundTransparency = 1
 topContainer.Parent = playersCategory
 
--- Padding interno do topContainer para melhor respiraÃ§Ã£o visual
+-- Padding interno do topContainer para melhor respiraÃƒÂ§ÃƒÂ£o visual
 local topContainerPad = Instance.new("UIPadding")
 topContainerPad.PaddingTop = UDim.new(0, 8)
 topContainerPad.PaddingBottom = UDim.new(0, 8)
@@ -5243,7 +5246,7 @@ topContainerPad.PaddingLeft = UDim.new(0, 8)
 topContainerPad.PaddingRight = UDim.new(0, 8)
 topContainerPad.Parent = topContainer
 
--- Barra de pesquisa estilo Solix: Ã­cone de lupa branco + "Search.."
+-- Barra de pesquisa estilo Solix: ÃƒÂ­cone de lupa branco + "Search.."
 local searchWrap = Instance.new("Frame")
 searchWrap.Size = UDim2.new(0.7, -5, 1, 0)
 searchWrap.Position = UDim2.new(0, 0, 0, 0)
@@ -5319,7 +5322,7 @@ counterStroke.Thickness = 1
 counterStroke.Transparency = 0.6
 counterStroke.Parent = playerCounter
 
--- Container para lista e aÃ§Ãµes - MAIOR com padding interno
+-- Container para lista e aÃƒÂ§ÃƒÂµes - MAIOR com padding interno
 local playersContainer = Instance.new("Frame")
 playersContainer.Size = UDim2.new(1, 0, 0, 580)
 playersContainer.BackgroundTransparency = 1
@@ -5356,7 +5359,7 @@ playersLayout.Parent = playersList
 
 playersList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
--- Painel de aÃ§Ãµes - coluna direita com LINHA VERTICAL ROXA Ã  esquerda (estilo Solix) - REDUZIDO
+-- Painel de aÃƒÂ§ÃƒÂµes - coluna direita com LINHA VERTICAL ROXA ÃƒÂ  esquerda (estilo Solix) - REDUZIDO
 local actionsPanel = Instance.new("Frame")
 actionsPanel.Size = UDim2.new(0.43, -5, 0, 230)
 actionsPanel.Position = UDim2.new(0.57, 5, 0, 0)
@@ -5372,7 +5375,7 @@ actionsPurpleLine.BorderSizePixel = 0
 actionsPurpleLine.Parent = actionsPanel
 Instance.new("UICorner", actionsPurpleLine).CornerRadius = UDim.new(0, 1)
 
--- Wrapper com padding uniforme: tÃ­tulo e botÃµes alinhados Ã  esquerda
+-- Wrapper com padding uniforme: tÃƒÂ­tulo e botÃƒÂµes alinhados ÃƒÂ  esquerda
 local actionsContentWrap = Instance.new("Frame")
 actionsContentWrap.Size = UDim2.new(1, -4, 1, 0)
 actionsContentWrap.Position = UDim2.new(0, 4, 0, 0)
@@ -5410,7 +5413,7 @@ actionsLayout.Parent = actionsContainer
 -- Estados dos toggles
 spectateActive = false
 
--- FunÃ§Ã£o para criar toggle com checkbox alinhado e estilizado
+-- FunÃƒÂ§ÃƒÂ£o para criar toggle com checkbox alinhado e estilizado
 function createActionToggle(text, callback)
 	local toggleFrame = Instance.new("Frame")
 	toggleFrame.Size = UDim2.new(1, 0, 0, 44)
@@ -5419,7 +5422,7 @@ function createActionToggle(text, callback)
 	toggleFrame.Parent = actionsContainer
 	Instance.new("UICorner", toggleFrame).CornerRadius = UDim.new(0, 8)
 
-	-- Checkbox quadrado estilizado (alinhado Ã  esquerda)
+	-- Checkbox quadrado estilizado (alinhado ÃƒÂ  esquerda)
 	local checkbox = Instance.new("TextButton")
 	checkbox.Size = UDim2.new(0, 22, 0, 22)
 	checkbox.Position = UDim2.new(0, 12, 0.5, -11)
@@ -5475,7 +5478,7 @@ function createActionToggle(text, callback)
 	return toggleFrame
 end
 
--- BotÃ£o de teleporte (aÃ§Ã£o Ãºnica, nÃ£o toggle)
+-- BotÃƒÂ£o de teleporte (aÃƒÂ§ÃƒÂ£o ÃƒÂºnica, nÃƒÂ£o toggle)
 local tpBtn = Instance.new("TextButton")
 tpBtn.Size = UDim2.new(1, 0, 0, 40)
 	tpBtn.BackgroundColor3 = SAKURA.primary
@@ -5487,7 +5490,7 @@ tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 tpBtn.Parent = actionsContainer
 Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 8)
 
--- Toggles para aÃ§Ãµes
+-- Toggles para aÃƒÂ§ÃƒÂµes
 local spectateToggle = createActionToggle("SPECTATE", function(enabled)
 	spectateActive = enabled
 	if enabled and selectedPlayer then
@@ -5497,7 +5500,7 @@ local spectateToggle = createActionToggle("SPECTATE", function(enabled)
 	end
 end)
 
--- BotÃ£o Kill Player
+-- BotÃƒÂ£o Kill Player
 local killBtn = Instance.new("TextButton")
 killBtn.Size = UDim2.new(1, 0, 0, 40)
 killBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
@@ -5511,7 +5514,7 @@ Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 8)
 
 killBtn.MouseButton1Click:Connect(function()
 	if killingPlayer then
-		-- Cancelar se jÃ¡ estiver matando
+		-- Cancelar se jÃƒÂ¡ estiver matando
 		stopKilling()
 		killBtn.Text = "KILL PLAYER"
 		killBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
@@ -5525,7 +5528,7 @@ killBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- BotÃ£o Magnet + Kill Garantido
+-- BotÃƒÂ£o Magnet + Kill Garantido
 local magnetKillBtn = Instance.new("TextButton")
 magnetKillBtn.Size = UDim2.new(1, 0, 0, 40)
 magnetKillBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -5552,7 +5555,7 @@ magnetKillBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Esconder aÃ§Ãµes inicialmente
+-- Esconder aÃƒÂ§ÃƒÂµes inicialmente
 tpBtn.Visible = false
 spectateToggle.Visible = false
 killBtn.Visible = false
@@ -5560,22 +5563,22 @@ magnetKillBtn.Visible = false
 
 
 
--- Esconder aÃ§Ãµes inicialmente
+-- Esconder aÃƒÂ§ÃƒÂµes inicialmente
 tpBtn.Visible = false
 spectateToggle.Visible = false
 killBtn.Visible = false
 
--- FunÃ§Ã£o simples para criar botÃ£o de jogador
+-- FunÃƒÂ§ÃƒÂ£o simples para criar botÃƒÂ£o de jogador
 function createPlayerButton(player)
 	if not player or player == LocalPlayer then return end
 	if not playersList or not playersList.Parent then return end
 	
-	-- Verificar se jÃ¡ existe botÃ£o para este jogador
+	-- Verificar se jÃƒÂ¡ existe botÃƒÂ£o para este jogador
 	if playerButtons[player] then
 		return playerButtons[player]
 	end
 	
-	-- Remover botÃ£o antigo se existir (por nome)
+	-- Remover botÃƒÂ£o antigo se existir (por nome)
 	local existingBtn = playersList:FindFirstChild(player.Name .. "_Simple")
 	if existingBtn then
 		existingBtn:Destroy()
@@ -5649,7 +5652,7 @@ function createPlayerButton(player)
 	return btn
 end
 
--- FunÃ§Ã£o simples para atualizar lista - ALIAS para rebuildPlayersList
+-- FunÃƒÂ§ÃƒÂ£o simples para atualizar lista - ALIAS para rebuildPlayersList
 function updatePlayersList()
 	if isTypingInSearch then return end
 	rebuildPlayersList()
@@ -5657,7 +5660,7 @@ end
 
 
 
--- Conectar botÃµes de aÃ§Ã£o
+-- Conectar botÃƒÂµes de aÃƒÂ§ÃƒÂ£o
 if tpBtn then
 	tpBtn.MouseButton1Click:Connect(function()
 		if selectedPlayer then
@@ -5666,10 +5669,10 @@ if tpBtn then
 	end)
 end
 
--- Os toggles jÃ¡ tÃªm suas prÃ³prias funÃ§Ãµes de callback
--- NÃ£o precisamos de conexÃµes adicionais
+-- Os toggles jÃƒÂ¡ tÃƒÂªm suas prÃƒÂ³prias funÃƒÂ§ÃƒÂµes de callback
+-- NÃƒÂ£o precisamos de conexÃƒÂµes adicionais
 
--- FunÃ§Ã£o para atualizar contador de jogadores
+-- FunÃƒÂ§ÃƒÂ£o para atualizar contador de jogadores
 function updatePlayerCounter()
 	local playerCount = 0
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -5700,7 +5703,7 @@ Players.PlayerAdded:Connect(function(player)
 	if isTypingInSearch then return end
 	if player ~= LocalPlayer then
 		updatePlayerCounter()
-		-- TambÃ©m atualizar lista visual
+		-- TambÃƒÂ©m atualizar lista visual
 		task.wait(0.1)
 		if rebuildPlayersList and not isTypingInSearch then pcall(rebuildPlayersList) end
 	end
@@ -5716,7 +5719,7 @@ end)
 
 
 
--- Config Page - Mesmo espaÃ§amento lateral que Misc
+-- Config Page - Mesmo espaÃƒÂ§amento lateral que Misc
 -- ESP Page - Organizado em subcategorias
 local espCategory = createCategory(espPage, "ESP Settings")
 
@@ -5940,7 +5943,7 @@ tracerColorBtn.MouseButton1Click:Connect(function()
 	tracerColorBtn.TextColor3 = tracerColorIndex == 7 and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
 end)
 
--- DistÃ¢ncia: Toggle + Cor (com padding aumentado)
+-- DistÃƒÂ¢ncia: Toggle + Cor (com padding aumentado)
 local distFrame = Instance.new("Frame")
 distFrame.Size = UDim2.new(1, 0, 0, 46)
 distFrame.BackgroundTransparency = 1
@@ -5992,7 +5995,7 @@ end, "Highlights the full player body through walls with an outline.")
 -- Atualizar tamanho da subcategoria boxes
 espBoxesSub.Size = UDim2.new(1, -20, 0, espBoxesLayout.AbsoluteContentSize.Y + 40)
 
--- ========= SUBCATEGORIA: CONFIGURAÃ‡Ã•ES =========
+-- ========= SUBCATEGORIA: CONFIGURAÃƒâ€¡Ãƒâ€¢ES =========
 local espConfigSub = Instance.new("Frame")
 espConfigSub.Size = UDim2.new(1, -20, 0, 0)
 espConfigSub.BackgroundColor3 = Color3.fromRGB(25, 45, 25)
@@ -6021,7 +6024,7 @@ local espConfigLayout = Instance.new("UIListLayout")
 espConfigLayout.Padding = UDim.new(0, 10)
 espConfigLayout.Parent = espConfigContent
 
--- ConfiguraÃ§Ãµes avanÃ§adas (com padding aumentado)
+-- ConfiguraÃƒÂ§ÃƒÂµes avanÃƒÂ§adas (com padding aumentado)
 local modeFrame = Instance.new("Frame")
 modeFrame.Size = UDim2.new(1, 0, 0, 46)
 modeFrame.BackgroundTransparency = 1
@@ -6171,7 +6174,7 @@ end)
 -- Aimbot Page (Rage) - Organizado em subcategorias
 local rageCategory = createCategory(aimbotPage, "Aim")
 
--- ========= SUBCATEGORIA: CONFIGURAÃ‡Ã•ES =========
+-- ========= SUBCATEGORIA: CONFIGURAÃƒâ€¡Ãƒâ€¢ES =========
 local aimbotConfigSub = Instance.new("Frame")
 aimbotConfigSub.Size = UDim2.new(1, -20, 0, 0)
 aimbotConfigSub.BackgroundColor3 = Color3.fromRGB(45, 25, 45)
@@ -6289,7 +6292,7 @@ visibleToggle.Position = UDim2.new(0, 0, 0, 55)
 visibleToggle.Size = UDim2.new(0.48, 0, 0, 50)
 
 local mobileToggle = createToggle(togglesFrame, "FOV", function(enabled)
-	-- "FOV" toggle: ativa comportamento mobile DO AIMBOT e tambÃ©m mostra/oculta o cÃ­rculo FOV
+	-- "FOV" toggle: ativa comportamento mobile DO AIMBOT e tambÃƒÂ©m mostra/oculta o cÃƒÂ­rculo FOV
 	aimbotMobile = enabled
 	aimbotShowFOV = enabled
 
@@ -6319,9 +6322,9 @@ local mobileToggle = createToggle(togglesFrame, "FOV", function(enabled)
 
 			circle.Parent = gui
 		else
-			-- jÃ¡ existe: garantir visibilidade e tamanho atual
+			-- jÃƒÂ¡ existe: garantir visibilidade e tamanho atual
 			fovCircle.Size = UDim2.fromOffset(aimbotFOV * 3, aimbotFOV * 3)
-			-- manter centralizado na tela quando nÃ£o for mobile; se mobile, posiÃ§Ã£o serÃ¡ atualizada no loop
+			-- manter centralizado na tela quando nÃƒÂ£o for mobile; se mobile, posiÃƒÂ§ÃƒÂ£o serÃƒÂ¡ atualizada no loop
 			if not aimbotMobile then
 				fovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
 			end
@@ -6343,9 +6346,9 @@ autoKillLastAttack = 0
 autoKillClickActive = false
 autoKillCycleState = 0
 autoKillCycleTimer = 0
-autoKillAttackSpeed = 0.3 -- Velocidade de ataque ultra rÃ¡pida
+autoKillAttackSpeed = 0.3 -- Velocidade de ataque ultra rÃƒÂ¡pida
 autoKillAttackPosition = 0 -- 0=back, 1=front, 2=left, 3=right
-autoKillCooldownActive = false -- Cooldown apÃ³s kills
+autoKillCooldownActive = false -- Cooldown apÃƒÂ³s kills
 autoKillLastEnemyCount = 0 -- Contador de inimigos anterior
 autoKillAttackCount = 0 -- Contador de ataques no alvo atual
 
@@ -6360,7 +6363,7 @@ local autoKillToggle = createToggle(autoKillContent, "Auto Kill", function(enabl
 			while autoKillEnabled do
 				task.wait(0.05)
 				
-				-- Verificar se estÃ¡ em cooldown
+				-- Verificar se estÃƒÂ¡ em cooldown
 				if autoKillCooldownActive then
 					if autoKillStatusLabel then
 						autoKillStatusLabel.Text = "Waiting 8s after kills..."
@@ -6437,7 +6440,7 @@ local autoKillToggle = createToggle(autoKillContent, "Auto Kill", function(enabl
 					continue
 				end
 				
-				-- NÃ£o fazer nada se estiver em cooldown
+				-- NÃƒÂ£o fazer nada se estiver em cooldown
 				if autoKillCooldownActive then
 					continue
 				end
@@ -6497,10 +6500,10 @@ local autoKillToggle = createToggle(autoKillContent, "Auto Kill", function(enabl
 						autoKillCycleTimer = autoKillCycleTimer + 0.05
 						
 						if autoKillCycleState == 0 then
-							-- Fase de ataque: TP instantÃ¢neo e ataque triplo
+							-- Fase de ataque: TP instantÃƒÂ¢neo e ataque triplo
 							local attackOffset
 							if autoKillAttackPosition == 0 then
-								attackOffset = CFrame.new(0, 0, 1) -- TrÃ¡s (mais perto)
+								attackOffset = CFrame.new(0, 0, 1) -- TrÃƒÂ¡s (mais perto)
 							elseif autoKillAttackPosition == 1 then
 								attackOffset = CFrame.new(0, 0, -1) -- Frente
 							elseif autoKillAttackPosition == 2 then
@@ -6509,11 +6512,11 @@ local autoKillToggle = createToggle(autoKillContent, "Auto Kill", function(enabl
 								attackOffset = CFrame.new(1, 0, 0) -- Direita
 							end
 							
-							-- TP instantÃ¢neo
+							-- TP instantÃƒÂ¢neo
 							myRoot.CFrame = CFrame.new(targetRoot.Position) * attackOffset
 							myRoot.AssemblyLinearVelocity = Vector3.zero
 							
-							-- Ataque triplo ultra rÃ¡pido
+							-- Ataque triplo ultra rÃƒÂ¡pido
 							if weapon then
 								for i = 1, 3 do
 									weapon:Activate()
@@ -6526,11 +6529,11 @@ local autoKillToggle = createToggle(autoKillContent, "Auto Kill", function(enabl
 							if autoKillCycleTimer >= autoKillAttackSpeed then
 								autoKillCycleState = 1
 								autoKillCycleTimer = 0
-								-- Alternar posiÃ§Ã£o para prÃ³ximo ataque
+								-- Alternar posiÃƒÂ§ÃƒÂ£o para prÃƒÂ³ximo ataque
 								autoKillAttackPosition = (autoKillAttackPosition + 1) % 4
 							end
 						else
-							-- Fase de escape: teleportar para baixo ultra rÃ¡pido
+							-- Fase de escape: teleportar para baixo ultra rÃƒÂ¡pido
 							myRoot.CFrame = CFrame.new(targetRoot.Position.X, -800, targetRoot.Position.Z)
 							myRoot.AssemblyLinearVelocity = Vector3.zero
 							
@@ -6538,7 +6541,7 @@ local autoKillToggle = createToggle(autoKillContent, "Auto Kill", function(enabl
 								autoKillCycleState = 0
 								autoKillCycleTimer = 0
 								
-								-- Se jÃ¡ atacou 5 vezes, trocar de alvo
+								-- Se jÃƒÂ¡ atacou 5 vezes, trocar de alvo
 								if autoKillAttackCount >= 5 then
 									autoKillCurrentTarget = nil
 									autoKillAttackCount = 0
@@ -6634,7 +6637,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 					local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
 					
 					if targetRoot then
-						-- Ataque quÃ¡druplo instantÃ¢neo
+						-- Ataque quÃƒÂ¡druplo instantÃƒÂ¢neo
 						for i = 1, 4 do
 							myRoot.CFrame = CFrame.new(targetRoot.Position.X, -700, targetRoot.Position.Z)
 							myRoot.AssemblyLinearVelocity = Vector3.zero
@@ -6872,10 +6875,10 @@ bindAutoSize(aimbotConfigSub, aimbotConfigLayout)
 bindAutoSize(autoKillSub, autoKillLayout)
 bindAutoSize(combatSub, combatLayout)
 
--- NOVO: Hitbox Expander (Design Limpo - sÃ³ Root, visual separado)
+-- NOVO: Hitbox Expander (Design Limpo - sÃƒÂ³ Root, visual separado)
 hitboxSize = 10
 _G.hitboxOriginalSizes = {} -- Guardar tamanho original do Root
-_G.hitboxIndicators = {} -- Indicadores visuais separados (nÃ£o deforma o personagem)
+_G.hitboxIndicators = {} -- Indicadores visuais separados (nÃƒÂ£o deforma o personagem)
 
 local function expandCharacterHitbox(character)
 	if not character or not character.Parent then return end
@@ -6892,23 +6895,23 @@ local function expandCharacterHitbox(character)
 		}
 	end
 
-	-- Expandir APENAS o HumanoidRootPart (Ã© invisÃ­vel, nÃ£o deforma o modelo)
+	-- Expandir APENAS o HumanoidRootPart (ÃƒÂ© invisÃƒÂ­vel, nÃƒÂ£o deforma o modelo)
 	root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-	root.Transparency = 1 -- SEMPRE invisÃ­vel (o Root nÃ£o deve ser visÃ­vel)
+	root.Transparency = 1 -- SEMPRE invisÃƒÂ­vel (o Root nÃƒÂ£o deve ser visÃƒÂ­vel)
 	root.CanCollide = false
 
-	-- Indicador visual com BORDAS marcadas (visÃ­vel atravÃ©s de paredes)
+	-- Indicador visual com BORDAS marcadas (visÃƒÂ­vel atravÃƒÂ©s de paredes)
 	if _G.hitboxVisible then
 		local indicator = _G.hitboxIndicators[character]
 		if not indicator or not indicator.Parent then
-			-- Part invisÃ­vel (sÃ³ serve de base para as bordas)
+			-- Part invisÃƒÂ­vel (sÃƒÂ³ serve de base para as bordas)
 			indicator = Instance.new("Part")
 			indicator.Name = "HitboxIndicator"
 			indicator.Anchored = true
 			indicator.CanCollide = false
-			indicator.CanQuery = false -- Raycasts/tiros passam atravÃ©s (acertam no Root real)
+			indicator.CanQuery = false -- Raycasts/tiros passam atravÃƒÂ©s (acertam no Root real)
 			indicator.Shape = Enum.PartType.Block
-			indicator.Transparency = 1 -- Part totalmente invisÃ­vel
+			indicator.Transparency = 1 -- Part totalmente invisÃƒÂ­vel
 			indicator.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
 			indicator.Parent = workspace
 
@@ -6917,7 +6920,7 @@ local function expandCharacterHitbox(character)
 			highlight.Name = "HitboxOutline"
 			highlight.Adornee = indicator
 			highlight.FillTransparency = 1 -- SEM preenchimento (limpo)
-			highlight.OutlineTransparency = 0 -- Bordas 100% visÃ­veis
+			highlight.OutlineTransparency = 0 -- Bordas 100% visÃƒÂ­veis
 			highlight.OutlineColor = _G.hitboxColor
 			highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 			highlight.Parent = indicator
@@ -6928,12 +6931,12 @@ local function expandCharacterHitbox(character)
 			selBox.Adornee = indicator
 			selBox.Color3 = _G.hitboxColor
 			selBox.LineThickness = 0.04
-			selBox.SurfaceTransparency = 1 -- Sem faces, sÃ³ arestas
+			selBox.SurfaceTransparency = 1 -- Sem faces, sÃƒÂ³ arestas
 			selBox.Parent = indicator
 
 			_G.hitboxIndicators[character] = indicator
 		end
-		-- Atualizar posiÃ§Ã£o, tamanho e cor a cada frame
+		-- Atualizar posiÃƒÂ§ÃƒÂ£o, tamanho e cor a cada frame
 		indicator.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
 		indicator.CFrame = root.CFrame
 
@@ -6990,14 +6993,14 @@ hitboxToggle = createToggle(combatContent, "Hitbox Expander", function(enabled)
 						if not isDead and isInSameDimension(player.Character) then
 							expandCharacterHitbox(player.Character)
 						else
-							-- Morto, outra dimensÃ£o, ou sem humanoid: limpar
+							-- Morto, outra dimensÃƒÂ£o, ou sem humanoid: limpar
 							restoreCharacterHitbox(player.Character)
 						end
 					end
 				end)
 			end
 
-			-- Limpar indicadores de personagens que jÃ¡ nÃ£o existem ou morreram
+			-- Limpar indicadores de personagens que jÃƒÂ¡ nÃƒÂ£o existem ou morreram
 			for char, indicator in pairs(_G.hitboxIndicators) do
 				local shouldClean = not char or not char.Parent or not char:FindFirstChild("HumanoidRootPart")
 				if not shouldClean then
@@ -7017,7 +7020,7 @@ hitboxToggle = createToggle(combatContent, "Hitbox Expander", function(enabled)
 			if player and player.Character then
 				restoreCharacterHitbox(player.Character)
 			end
-			-- Limpar por seguranÃ§a (character pode jÃ¡ ter sido destruÃ­do)
+			-- Limpar por seguranÃƒÂ§a (character pode jÃƒÂ¡ ter sido destruÃƒÂ­do)
 			for char, indicator in pairs(_G.hitboxIndicators) do
 				if not char or not char.Parent then
 					pcall(function() indicator:Destroy() end)
@@ -7090,9 +7093,9 @@ hitboxSliderInput:GetPropertyChangedSignal("Text"):Connect(function()
 	end
 end)
 
--- NOVO: CustomizaÃ§Ã£o de Hitbox (Cor e Visibilidade)
+-- NOVO: CustomizaÃƒÂ§ÃƒÂ£o de Hitbox (Cor e Visibilidade)
 _G.hitboxColor = Color3.fromRGB(0, 150, 255)
-_G.hitboxVisible = true -- Bordas visÃ­veis por defeito
+_G.hitboxVisible = true -- Bordas visÃƒÂ­veis por defeito
 
 hitboxOptionsFrame = Instance.new("Frame")
 hitboxOptionsFrame.Size = UDim2.new(1, 0, 0, 40)
@@ -7278,7 +7281,7 @@ end, "Forces your character into a third-person view.", {
 })
 
 -- NOVO: Spinbot
-spinbotSpeed = 500 -- Velocidade MAIS SUAVE (Pedida pelo usuÃ¡rio)
+spinbotSpeed = 500 -- Velocidade MAIS SUAVE (Pedida pelo usuÃƒÂ¡rio)
 spinbotToggle = createToggle(combatContent, "Spinbot (Anti-Aim)", function(enabled)
 	if enabled then
 		_G.spinAngle = 0
@@ -7288,30 +7291,30 @@ spinbotToggle = createToggle(combatContent, "Spinbot (Anti-Aim)", function(enabl
 				local hum = char:FindFirstChild("Humanoid")
 				local root = char.HumanoidRootPart
 				if hum then
-					-- SÃ“ ATIVA QUANDO O ROUND COMEÃ‡A (WalkSpeed > 0)
+					-- SÃƒâ€œ ATIVA QUANDO O ROUND COMEÃƒâ€¡A (WalkSpeed > 0)
 					if hum.WalkSpeed <= 0 then
 						hum.AutoRotate = true
 						return
 					end
 
-					hum.AutoRotate = false -- Previne a tentativa de ficar de pÃ© da engine
+					hum.AutoRotate = false -- Previne a tentativa de ficar de pÃƒÂ© da engine
 					if hum.FloorMaterial ~= Enum.Material.Air then
-						hum.Jump = true -- ForÃ§a a saltar normal
+						hum.Jump = true -- ForÃƒÂ§a a saltar normal
 					else
-						-- BHOP CS2: Puxado para o chÃ£o suavemente na queda
+						-- BHOP CS2: Puxado para o chÃƒÂ£o suavemente na queda
 						local vel = root.AssemblyLinearVelocity
 						if vel.Y <= 0 then
 							root.AssemblyLinearVelocity = Vector3.new(vel.X, vel.Y - 2, vel.Z)
 						end
 					end
 					
-					-- Andar mais rÃ¡pido enquanto gira (CFrame Speed EQUILIBRADO)
+					-- Andar mais rÃƒÂ¡pido enquanto gira (CFrame Speed EQUILIBRADO)
 					if hum.MoveDirection.Magnitude > 0 then
 						local rayParams = RaycastParams.new()
 						rayParams.FilterDescendantsInstances = {char}
 						rayParams.FilterType = Enum.RaycastFilterType.Exclude
 						
-						-- Verificar se hÃ¡ uma parede/barreira no caminho antes de teleportar
+						-- Verificar se hÃƒÂ¡ uma parede/barreira no caminho antes de teleportar
 						local rayResult = workspace:Raycast(root.Position, hum.MoveDirection * 2, rayParams)
 						if not rayResult then
 							root.CFrame = root.CFrame + (hum.MoveDirection * 0.15)
@@ -7319,11 +7322,11 @@ spinbotToggle = createToggle(combatContent, "Spinbot (Anti-Aim)", function(enabl
 					end
 				end
 				
-				-- RotaÃ§Ã£o Pura, MatemÃ¡tica (ImpossÃ­vel de deitar ou bugar fÃ­sica)
+				-- RotaÃƒÂ§ÃƒÂ£o Pura, MatemÃƒÂ¡tica (ImpossÃƒÂ­vel de deitar ou bugar fÃƒÂ­sica)
 				_G.spinAngle = _G.spinAngle + spinbotSpeed
 				if _G.spinAngle >= 360 then _G.spinAngle = _G.spinAngle - 360 end
 				
-				-- MantÃ©m a posiÃ§Ã£o (com o offset de movimento aplicado acima) rodado no eixo Y
+				-- MantÃƒÂ©m a posiÃƒÂ§ÃƒÂ£o (com o offset de movimento aplicado acima) rodado no eixo Y
 				root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, math.rad(_G.spinAngle), 0)
 			end
 		end)
@@ -7373,7 +7376,7 @@ magnetToggle = createToggle(combatContent, "Magnet Player", function(enabled)
 							
 							if not tRoot or not tHum then return end
 							
--- SALVAR posiÃ§Ã£o e stats ORIGINAIS sÃ³ uma vez
+-- SALVAR posiÃƒÂ§ÃƒÂ£o e stats ORIGINAIS sÃƒÂ³ uma vez
 								if not _G.magnetOriginalPositions[player] then
 									_G.magnetOriginalPositions[player] = tRoot.CFrame
 								end
@@ -7388,7 +7391,7 @@ magnetToggle = createToggle(combatContent, "Magnet Player", function(enabled)
 								-- PUXAR SEMPRE, TODO FRAME, NUNCA PARA
 								tRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -magnetDistance)
 								
-								-- ZERAR TODA VELOCIDADE PARA NÃƒO ESCAPAR
+								-- ZERAR TODA VELOCIDADE PARA NÃƒÆ’O ESCAPAR
 								tRoot.AssemblyLinearVelocity = Vector3.zero
 								tRoot.AssemblyAngularVelocity = Vector3.zero
 								tRoot.Velocity = Vector3.zero
@@ -7413,7 +7416,7 @@ magnetToggle = createToggle(combatContent, "Magnet Player", function(enabled)
 					local tRoot = player.Character:FindFirstChild("HumanoidRootPart")
 					local tHum = player.Character:FindFirstChildOfClass("Humanoid")
 					
-					-- VOLTAR PARA POSIÃ‡ÃƒO ORIGINAL
+					-- VOLTAR PARA POSIÃƒâ€¡ÃƒÆ’O ORIGINAL
 					if _G.magnetOriginalPositions[player] and tRoot then
 						tRoot.CFrame = _G.magnetOriginalPositions[player]
 						tRoot.AssemblyLinearVelocity = Vector3.zero
@@ -7478,7 +7481,7 @@ magnetSliderInput:GetPropertyChangedSignal("Text"):Connect(function()
 	end
 end)
 
--- Loop para atualizar FOV mÃ³vel
+-- Loop para atualizar FOV mÃƒÂ³vel
 RunService.RenderStepped:Connect(function()
 	if aimbotShowFOV and aimbotMobile then
 		local fovCircle = gui:FindFirstChild("FOVCircle")
@@ -7529,14 +7532,14 @@ noclipToggleApi = nil
 -- Toggle do fly no menu - controle principal
 flyToggle = createToggle(movementContent, "Fly", function(enabled)
 	if enabled then
-		-- Quando ativado no menu, forÃ§a ativaÃ§Ã£o
+		-- Quando ativado no menu, forÃƒÂ§a ativaÃƒÂ§ÃƒÂ£o
 		if not FlySystem.flying then
 			toggleFly()
 		end
 	else
-		-- Quando desativado no menu, forÃ§a desativaÃ§Ã£o
+		-- Quando desativado no menu, forÃƒÂ§a desativaÃƒÂ§ÃƒÂ£o
 		if FlySystem.flying then
-			FlySystem:toggleFly() -- ForÃ§a desativaÃ§Ã£o
+			FlySystem:toggleFly() -- ForÃƒÂ§a desativaÃƒÂ§ÃƒÂ£o
 			flying = false
 		end
 	end
@@ -7670,20 +7673,20 @@ end, "Lets your character pass through walls and solid objects.", {
 	end,
 })
 
--- Sistema Noclip Melhorado - Loop contÃ­nuo para garantir que atravessa TODAS as paredes
+-- Sistema Noclip Melhorado - Loop contÃƒÂ­nuo para garantir que atravessa TODAS as paredes
 task.spawn(function()
 	while true do
-		task.wait(0.05) -- VerificaÃ§Ã£o frequente
+		task.wait(0.05) -- VerificaÃƒÂ§ÃƒÂ£o frequente
 		if noclip then
 			local character = LocalPlayer.Character
 			if character then
-				-- Desabilitar colisÃ£o em TODAS as partes do personagem
+				-- Desabilitar colisÃƒÂ£o em TODAS as partes do personagem
 				forEachCharacterPart(character, function(part)
 					if part.CanCollide == true then
 						part.CanCollide = false
 					end
 				end)
-				-- TambÃ©m desabilitar colisÃ£o em partes especÃ­ficas que podem ser esquecidas
+				-- TambÃƒÂ©m desabilitar colisÃƒÂ£o em partes especÃƒÂ­ficas que podem ser esquecidas
 				local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
 				if humanoidRootPart and humanoidRootPart.CanCollide == true then
 					humanoidRootPart.CanCollide = false
@@ -7755,14 +7758,14 @@ jumpToggle = createToggle(boostsContent, "Jump Boost", function(enabled)
 	end
 end, "Raises your jump height.")
 
--- Sistema de PersistÃªncia ImplacÃ¡vel: Boosts e Noclip
+-- Sistema de PersistÃƒÂªncia ImplacÃƒÂ¡vel: Boosts e Noclip
 RunService.Stepped:Connect(function()
 	local character = LocalPlayer.Character
 	if not character then return end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return end
 
-	-- PersistÃªncia contÃ­nua: neutraliza magias ou sistemas que resetam walkspeed/jump
+	-- PersistÃƒÂªncia contÃƒÂ­nua: neutraliza magias ou sistemas que resetam walkspeed/jump
 	if speedBoostEnabled and humanoid.WalkSpeed ~= speedBoostValue then
 		humanoid.WalkSpeed = speedBoostValue
 	end
@@ -7772,7 +7775,7 @@ RunService.Stepped:Connect(function()
 	end
 end)
 
--- Reaplica ESP apÃ³s respawn
+-- Reaplica ESP apÃƒÂ³s respawn
 LocalPlayer.CharacterAdded:Connect(function(character)
 	if espEnabled then
 		task.wait(1)
@@ -7892,7 +7895,7 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- ========= SUBCATEGORIA: UTILITÃRIOS =========
+-- ========= SUBCATEGORIA: UTILITÃƒÂRIOS =========
 utilsSubCategory = Instance.new("Frame")
 utilsSubCategory.Size = UDim2.new(1, -20, 0, 0)
 utilsSubCategory.BackgroundColor3 = Color3.fromRGB(45, 25, 25)
@@ -7922,7 +7925,7 @@ utilsLayout = Instance.new("UIListLayout")
 utilsLayout.Padding = UDim.new(0, 10)
 utilsLayout.Parent = utilsContent
 
--- ConexÃ£o do infinite jump
+-- ConexÃƒÂ£o do infinite jump
 infiniteJumpConnection = nil
 
 infiniteJumpToggle = createToggle(utilsContent, "Infinite Jump", function(enabled)
@@ -8159,7 +8162,7 @@ stealDistanceInput.Position = UDim2.new(0.58, 4, 0, 2)
 stealDistanceInput.BackgroundColor3 = C.BgInput
 stealDistanceInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 stealDistanceInput.PlaceholderColor3 = C.TxtDim
-stealDistanceInput.PlaceholderText = "8-300"
+stealDistanceInput.PlaceholderText = "8-500"
 stealDistanceInput.Text = tostring(stealDistanceValue)
 stealDistanceInput.Font = Enum.Font.Gotham
 stealDistanceInput.TextSize = 12
@@ -8175,6 +8178,26 @@ stealDistanceInput.FocusLost:Connect(function()
 	else
 		stealDistanceInput.Text = tostring(stealDistanceValue)
 	end
+end)
+
+stealTargetModeBtn = Instance.new("TextButton")
+stealTargetModeBtn.Size = UDim2.new(1, 0, 0, 36)
+stealTargetModeBtn.BackgroundColor3 = C.BindBg
+stealTargetModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+stealTargetModeBtn.Font = Enum.Font.GothamSemibold
+stealTargetModeBtn.TextSize = 12
+stealTargetModeBtn.Text = "Steal Target Mode: " .. tostring(stealTargetMode)
+stealTargetModeBtn.Parent = utilsContent
+Instance.new("UICorner", stealTargetModeBtn).CornerRadius = UDim.new(0, 8)
+Stroke(C.Divider, 1, stealTargetModeBtn).Transparency = 0.25
+
+stealTargetModeBtn.MouseButton1Click:Connect(function()
+	if string.lower(tostring(stealTargetMode)) == "best" then
+		stealTargetMode = "Worst"
+	else
+		stealTargetMode = "Best"
+	end
+	stealTargetModeBtn.Text = "Steal Target Mode: " .. tostring(stealTargetMode)
 end)
 
 teleportsCategory = createCategory(teleportsPage, "Teleports")
@@ -8491,7 +8514,7 @@ menuSizeBtn.MouseButton1Click:Connect(function()
 	-- Aplicar redimensionamento proporcional
 	resizeUI(size.width, size.height)
 	
-	-- Atualizar texto do botÃ£o
+	-- Atualizar texto do botÃƒÂ£o
 	menuSizeBtn.Text = "Size: " .. size.name
 end)
 
@@ -8526,7 +8549,7 @@ function showPanel(show)
 	end
 end
 
--- FunÃ§Ã£o para criar player buttons (versÃ£o simples com nome grande)
+-- FunÃƒÂ§ÃƒÂ£o para criar player buttons (versÃƒÂ£o simples com nome grande)
 function addPlayerToRow(p)
 	if p == LocalPlayer then return end
 
@@ -8548,7 +8571,7 @@ function addPlayerToRow(p)
 	nameLbl.TextXAlignment = Enum.TextXAlignment.Left
 	nameLbl.TextYAlignment = Enum.TextYAlignment.Center
 
-	nameLbl.Text = p.DisplayName and (p.DisplayName .. "  â€¢  @" .. p.Name) or ("@" .. p.Name)
+	nameLbl.Text = p.DisplayName and (p.DisplayName .. "  Ã¢â‚¬Â¢  @" .. p.Name) or ("@" .. p.Name)
 	nameLbl.Parent = playerBtn
 
 	local selectionIndicator = Instance.new("Frame")
@@ -8646,7 +8669,7 @@ function getClosestPlayer()
 		if data and isValidPlayer(player) and isEnemy(player) then
 			local character = data.character
 			
-			-- Verificar se estÃ¡ na mesma dimensÃ£o
+			-- Verificar se estÃƒÂ¡ na mesma dimensÃƒÂ£o
 			if not isInSameDimension(character) then
 				continue
 			end
@@ -8701,7 +8724,7 @@ elseif aimbotTarget == "Chest" then
 	camera.CFrame = camera.CFrame:Lerp(targetCFrame, smoothFactor)
 end
 
--- FunÃ§Ã£o para verificar se estÃ¡ em veÃ­culo em movimento
+-- FunÃƒÂ§ÃƒÂ£o para verificar se estÃƒÂ¡ em veÃƒÂ­culo em movimento
 function isInMovingVehicle()
 	local character = LocalPlayer.Character
 	if not character then return false end
@@ -8712,7 +8735,7 @@ function isInMovingVehicle()
 	local seatPart = humanoid.SeatPart
 	if not seatPart then return false end
 	
-	-- Verificar se o veÃ­culo estÃ¡ em movimento
+	-- Verificar se o veÃƒÂ­culo estÃƒÂ¡ em movimento
 	local vehicle = seatPart.Parent
 	if vehicle then
 		local primaryPart = vehicle.PrimaryPart or vehicle:FindFirstChildWhichIsA("BasePart")
@@ -8875,6 +8898,7 @@ function collectMenuConfig()
 	configData.values.instantInteractWhitelistText = instantInteractWhitelistText
 	configData.values.instantInteractBlacklistText = instantInteractBlacklistText
 	configData.values.stealDistanceValue = stealDistanceValue
+	configData.values.stealTargetMode = stealTargetMode
 
 	return configData
 end
@@ -9226,6 +9250,15 @@ function loadConfig(configName)
 				stealDistanceLabel.Text = "Steal Distance: " .. tostring(stealDistanceValue)
 			end
 		end
+		if type(configData.values.stealTargetMode) == "string" then
+			local mode = string.lower(configData.values.stealTargetMode)
+			if mode == "best" or mode == "worst" then
+				stealTargetMode = (mode == "worst") and "Worst" or "Best"
+				if stealTargetModeBtn then
+					stealTargetModeBtn.Text = "Steal Target Mode: " .. tostring(stealTargetMode)
+				end
+			end
+		end
 	end
 
 	configData.lastUsed = makeConfigTimestamp()
@@ -9517,7 +9550,7 @@ RunService.RenderStepped:Connect(function()
 			lastTargetUpdateTime = tick()
 		end
 		
-		-- SÃ³ trava a mira na tela se a tecla estiver segurada ou em veÃ­culo
+		-- SÃƒÂ³ trava a mira na tela se a tecla estiver segurada ou em veÃƒÂ­culo
 		if currentAimbotTarget and (aimbotKeyHeld or isInMovingVehicle()) then
 			aimAt(currentAimbotTarget)
 		end
@@ -10278,7 +10311,7 @@ applyStoredMenuSettings()
 
 -- Input geral - Corrigido para evitar conflitos
 UserInputService.InputBegan:Connect(function(input, processed)
-	-- Menu toggle (M) - Prioridade mÃ¡xima (sempre funciona)
+	-- Menu toggle (M) - Prioridade mÃƒÂ¡xima (sempre funciona)
 	if inputMatchesBind(input, UI_TOGGLE_KEY) then
 		if menuIsMinimized then
 			if setMinimizedState then
@@ -10325,3 +10358,4 @@ LocalPlayer.Idled:Connect(function()
 	VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 	warn("[NIGHT MENU] Anti-AFK ativado para prevenir kick.")
 end)
+
